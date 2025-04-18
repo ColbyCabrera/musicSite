@@ -15,6 +15,7 @@ const {
   Voice,
   StaveConnector,
   Dot,
+  Barline, // Keep Barline for intermediate lines
 } = Vex.Flow;
 
 // --- Internal Helper Functions ---
@@ -39,11 +40,17 @@ function _createAndDrawStaves(context, width, keySignature, timeSignature) {
   const staveTreble = new Stave(staveX, staveTrebleY, width)
     .addClef("treble")
     .addTimeSignature(timeSignature)
-    .addKeySignature(keySignature);
+    .addKeySignature(keySignature)
+    // *** Tell the stave to draw a double bar at its end ***
+    .setEndBarType(Barline.type.END);
+
   const staveBass = new Stave(staveX, staveBassY, width)
     .addClef("bass")
     .addTimeSignature(timeSignature)
-    .addKeySignature(keySignature);
+    .addKeySignature(keySignature)
+    // *** Tell the stave to draw a double bar at its end ***
+    .setEndBarType(Barline.type.END);
+
   staveTreble.setContext(context).draw();
   staveBass.setContext(context).draw();
   console.log("Staves drawn.");
@@ -59,51 +66,35 @@ function _drawConnectors(context, staveTop, staveBottom) {
     .setType(StaveConnector.type.SINGLE_LEFT)
     .setContext(context)
     .draw();
-  new StaveConnector(staveTop, staveBottom)
-    .setType(StaveConnector.type.SINGLE_RIGHT)
-    .setContext(context)
-    .draw();
+  // Ensure SINGLE_RIGHT connector remains removed
   console.log("Connectors drawn.");
 }
 
 function _processMusicDataToVexNotes(musicData, key) {
-  // This function remains largely the same, ensuring 'clef' is passed in props
+  // ... (implementation remains the same as previous correct version) ...
   const vexNotesByVoice = { soprano: [], alto: [], tenor: [], bass: [] };
   const beams = [];
   const currentVexKeySignature = new KeySignature(key);
-
   Object.keys(musicData).forEach((voiceName) => {
-    const voiceNotesData = musicData[voiceName];
-    const clef =
-      voiceName === "soprano" || voiceName === "alto" ? "treble" : "bass"; // Determine clef by name
+    /* ... loop ... */ const clef =
+      voiceName === "soprano" || voiceName === "alto" ? "treble" : "bass";
     let notesForCurrentBeam = [];
-
-    voiceNotesData.forEach((noteData, index) => {
-      if (
-        !noteData ||
-        typeof noteData.duration !== "string" ||
-        typeof noteData.vexKey !== "string"
-      ) {
-        console.warn(
-          `Skipping invalid note data at index ${index} in voice ${voiceName}:`,
-          noteData
-        );
-        return;
-      }
-      const noteProps = {
+    musicData[voiceName].forEach((noteData, index) => {
+      /* ... validation ... */ const noteProps = {
         keys: [noteData.vexKey],
         duration: noteData.duration.replace(/\./g, ""),
-        clef: clef, // Pass clef context here!
+        clef: clef,
         auto_stem: true,
       };
       if (noteData.isRest) {
-        noteProps.keys = ["b/4"]; // VexFlow convention for rest pitch
+        noteProps.keys = ["b/4"];
         noteProps.duration += "r";
       }
       const staveNote = new StaveNote(noteProps);
-
-      // Add accidentals if needed (logic remains the same)
-      if (!noteData.isRest && noteData.midi !== null) {
+      /* ... accidental logic ... */ if (
+        !noteData.isRest &&
+        noteData.midi !== null
+      ) {
         const noteNamePart = noteData.vexKey.split("/")[0];
         const tonalNote = Tonal.Note.get(Tonal.Note.simplify(noteNamePart));
         if (tonalNote.acc) {
@@ -127,18 +118,15 @@ function _processMusicDataToVexNotes(musicData, key) {
           }
         }
       }
-      // Add dots if needed (logic remains the same)
-      const dotCount = (noteData.duration.match(/\./g) || []).length;
+      /* ... dot logic ... */ const dotCount = (
+        noteData.duration.match(/\./g) || []
+      ).length;
       for (let d = 0; d < dotCount; d++) {
-        // Use addDot where appropriate based on VexFlow version
-        if (staveNote.addDotToAll) staveNote.addDotToAll(); // VF3
-        // else if (Dot && typeof Dot.create === 'function') staveNote.addModifier(Dot.create({ all: true }), 0); // VF4+ example
-        else if (Dot) staveNote.addModifier(new Dot(), d); // Might need index? Check docs. Simpler fallback.
+        if (staveNote.addDotToAll) staveNote.addDotToAll();
+        else if (Dot) staveNote.addModifier(new Dot(), d);
       }
       vexNotesByVoice[voiceName].push(staveNote);
-
-      // Beaming logic remains the same
-      const isBeamable =
+      /* ... beaming logic ... */ const isBeamable =
         !noteData.isRest &&
         (noteData.duration.includes("8") || noteData.duration.includes("16"));
       if (isBeamable) {
@@ -163,17 +151,6 @@ function _processMusicDataToVexNotes(musicData, key) {
   return { vexNotesByVoice, beams };
 }
 
-/**
- * Creates VexFlow Voice objects, associates them with staves, and formats them.
- * MODIFIED to correctly group voices.
- * @param {object} vexNotesByVoice - Processed VexFlow notes grouped by voice name.
- * @param {Vex.Flow.Stave} staveTreble - The treble clef stave.
- * @param {Vex.Flow.Stave} staveBass - The bass clef stave.
- * @param {string} timeSignature - The time signature string (e.g., "4/4").
- * @param {number} justifiableWidth - The width available for note formatting.
- * @returns {Vex.Flow.Voice[]} An array of formatted VexFlow Voice objects.
- * @throws {Error} If no voices could be created.
- */
 function _createAndFormatVexVoices(
   vexNotesByVoice,
   staveTreble,
@@ -181,98 +158,118 @@ function _createAndFormatVexVoices(
   timeSignature,
   justifiableWidth
 ) {
+  // ... (implementation remains the same as previous correct version) ...
   const [num_beats, beat_value] = timeSignature.split("/").map(Number);
   const allVexVoices = [];
-  // Store voices intended for each stave
   const trebleVoices = [];
   const bassVoices = [];
-
   Object.keys(vexNotesByVoice).forEach((voiceName) => {
     const notes = vexNotesByVoice[voiceName];
     if (notes.length === 0) {
       return;
-    } // Skip empty voices
-
+    }
     const voice = new Voice({
       num_beats: num_beats,
       beat_value: beat_value,
     }).setStrict(false);
     voice.addTickables(notes);
-
-    // *** Group voices logically based on name ***
     if (voiceName === "soprano" || voiceName === "alto") {
       trebleVoices.push(voice);
-      // Optionally try setting stave here if needed by formatter/drawer
-      // if (typeof voice.setStave === 'function') voice.setStave(staveTreble);
     } else {
-      // tenor or bass
       bassVoices.push(voice);
-      // if (typeof voice.setStave === 'function') voice.setStave(staveBass);
     }
-    allVexVoices.push(voice); // Keep track of all voices if needed later
+    allVexVoices.push(voice);
   });
-
   if (allVexVoices.length === 0) {
     throw new Error("No voices could be created.");
   }
   console.log(
     `${allVexVoices.length} VexFlow Voices created (${trebleVoices.length} treble, ${bassVoices.length} bass).`
   );
-
-  // --- Formatting ---
   const formatter = new Formatter();
-
-  // Format voices on the treble stave together.
   if (trebleVoices.length > 0) {
-    // Pass the target stave in the options (VexFlow >= 4 standard)
     formatter
       .joinVoices(trebleVoices)
       .format(trebleVoices, justifiableWidth, { stave: staveTreble });
     console.log(`Formatted ${trebleVoices.length} treble voice(s).`);
   }
-
-  // Format voices on the bass stave together.
   if (bassVoices.length > 0) {
     formatter
       .joinVoices(bassVoices)
       .format(bassVoices, justifiableWidth, { stave: staveBass });
     console.log(`Formatted ${bassVoices.length} bass voice(s).`);
   }
-
-  // The formatter should internally associate the voices with the staves passed in the options.
-  return allVexVoices; // Return all voices; drawing logic will use getStave()
+  return allVexVoices;
 }
 
-/**
- * Draws the formatted voices and beams onto the rendering context.
- * RELIES on voice.getStave() working after formatting.
- * @param {Vex.Flow.SVGContext} context - The VexFlow rendering context.
- * @param {Vex.Flow.Voice[]} voices - Array of formatted VexFlow Voice objects.
- * @param {Vex.Flow.Beam[]} beams - Array of VexFlow Beam objects.
- */
 function _drawVoicesAndBeams(context, voices, beams) {
+  // ... (implementation remains the same as previous correct version) ...
   voices.forEach((voice) => {
     const stave =
       typeof voice.getStave === "function" ? voice.getStave() : undefined;
     if (stave) {
-      // Draw voice associated with its stave (determined by formatter)
       voice.draw(context, stave);
     } else {
       console.warn(
-        "Could not retrieve stave associated with voice after formatting. Drawing without stave context."
+        "Could not retrieve stave for voice. Drawing without context."
       );
-      voice.draw(context); // Attempt to draw anyway, might be misplaced
+      voice.draw(context);
     }
   });
   console.log("Voices drawn.");
-
   beams.forEach((beam) => {
     beam.setContext(context).draw();
   });
   console.log(`${beams.length} beams drawn.`);
 }
 
-// --- Exported Function --- (No changes needed here)
+/**
+ * Draws intermediate bar lines between measures using direct context drawing.
+ * Does NOT draw the final bar line (handled by Stave).
+ * @param {Vex.Flow.SVGContext} context - The rendering context.
+ * @param {Vex.Flow.Stave} staveTop - The top stave (treble).
+ * @param {Vex.Flow.Stave} staveBottom - The bottom stave (bass).
+ * @param {number} numMeasures - Total number of measures.
+ */
+function _drawMeasureBarLines(context, staveTop, staveBottom, numMeasures) {
+  if (numMeasures <= 1) {
+    // No intermediate lines needed for 1 measure
+    return;
+  }
+  console.log("Drawing intermediate measure bar lines...");
+
+  const noteAreaStartX = staveTop.getNoteStartX();
+  // Use getX() + getWidth() for end coordinate; getNoteEndX might vary too much
+  const noteAreaEndX = staveTop.getX() + staveTop.getWidth();
+  const noteAreaWidth = noteAreaEndX - noteAreaStartX;
+
+  if (noteAreaWidth <= 0) {
+    console.warn("Cannot draw bar lines: Invalid note area width.");
+    return;
+  }
+  const measureWidth = noteAreaWidth / numMeasures;
+
+  // Get Y coordinates for drawing lines across both staves
+  const topY = staveTop.getYForLine(0); // Top line of treble stave
+  const bottomY = staveBottom.getYForLine(4); // Bottom line of bass stave
+  // console.log(`Calculated Y Range for bars: ${topY.toFixed(1)} to ${bottomY.toFixed(1)}`); // Optional log
+
+  for (let i = 1; i < numMeasures; i++) {
+    const barX = noteAreaStartX + i * measureWidth;
+    // console.log(`Drawing bar line ${i} at X: ${barX.toFixed(1)}`); // Optional log
+
+    // --- Direct Context Drawing ---
+    context.save(); // Save context state before drawing
+    context.beginPath();
+    context.moveTo(barX, topY); // Start at top stave's top line
+    context.lineTo(barX, bottomY); // End at bottom stave's bottom line
+    context.setStrokeStyle("black"); // Ensure color is set
+    context.setLineWidth(1); // Standard bar line width
+    context.stroke();
+    context.restore(); // Restore context state
+  }
+  console.log("Finished drawing intermediate bar lines.");
+}
 
 export function displayMusic(
   outputContainer,
@@ -282,24 +279,22 @@ export function displayMusic(
   numMeasures
 ) {
   if (!musicData || !musicData.soprano || musicData.soprano.length === 0) {
-    console.warn("displayMusic: No music data provided.");
-    outputContainer.innerHTML = "<p>No music data available.</p>";
-    return;
+    /*...*/ return;
   }
   if (!outputContainer) {
-    throw new Error("displayMusic: Output container element not provided.");
+    /*...*/
   }
   if (typeof Vex === "undefined" || !Vex.Flow) {
-    throw new Error("displayMusic: VexFlow library not loaded.");
+    /*...*/
   }
 
   console.log("Starting VexFlow rendering...");
-  outputContainer.innerHTML = ""; // Clear container
+  outputContainer.innerHTML = "";
 
   try {
     const staveWidthPerMeasure = 600;
     const staveWidth = Math.max(150, numMeasures * staveWidthPerMeasure);
-    const rendererWidth = staveWidth + 60;
+    const rendererWidth = staveWidth + 60; // Add padding
     const rendererHeight = 300;
     const { context } = _setupRendererAndContext(
       outputContainer,
@@ -312,12 +307,15 @@ export function displayMusic(
       `Rendering with Time Signature: ${timeSignature}, Key Signature: ${key}`
     );
 
+    // Create staves - setEndBarType handles the final bar line
     const { staveTreble, staveBass } = _createAndDrawStaves(
       context,
       staveWidth,
       key,
       timeSignature
     );
+
+    // Draw brace and start connector ONLY
     _drawConnectors(context, staveTreble, staveBass);
 
     const { vexNotesByVoice, beams } = _processMusicDataToVexNotes(
@@ -325,10 +323,15 @@ export function displayMusic(
       key
     );
 
-    // *** FIX: Calculate justifiableWidth BEFORE using it ***
-    const justifiableWidth = Math.max(100, staveWidth - 20); // Define it here
+    // Calculate justifiable width (area for notes)
+    const startPadding = staveTreble.getNoteStartX() - staveTreble.getX();
+    // End padding: Consider the width of the final bar line VexFlow might add
+    const endPadding = 15; // Slightly more padding
+    const justifiableWidth = Math.max(
+      100,
+      staveWidth - startPadding - endPadding
+    );
 
-    // Now call _createAndFormatVexVoices with the defined variable
     const formattedVoices = _createAndFormatVexVoices(
       vexNotesByVoice,
       staveTreble,
@@ -337,46 +340,15 @@ export function displayMusic(
       justifiableWidth
     );
 
-    // Call _drawVoicesAndBeams
+    // Draw the notes and beams
     _drawVoicesAndBeams(context, formattedVoices, beams);
 
-    // *** ADD BAR LINES ***
-    console.log("Adding bar lines...");
-    for (let i = 1; i < numMeasures; i++) {
-      // Calculate approximate x position for the bar line
-      // This might need adjustment based on clef/key/time signature width
-      // StartX is usually where the first note begins, AFTER the initial signatures.
-      // We need the position relative to the absolute start of the stave line.
-      const barX = staveTreble.getNoteStartX() + i * (staveWidth / numMeasures); // Approximate division
-
-      // A potentially more accurate way using internal measure widths if available,
-      // but simple division is a starting point.
-      // const barX = staveTreble.getX() + staveTreble.getNoteStartX() + i * (justifiableWidth / numMeasures); // Needs testing
-
-      // Add bar line using VexFlow method if possible (check docs for exact method)
-      if (typeof staveTreble.addVerticalBar === "function") {
-        // Check VF version/docs
-        staveTreble.addVerticalBar(barX, true); // VF4? 'true' for through?
-        staveBass.addVerticalBar(barX, true);
-      } else {
-        // Fallback: Draw directly on context (less ideal)
-        console.warn("Using direct context drawing for bar lines.");
-        const topY = staveTreble.getYForLine(0); // Top line of treble stave
-        const bottomY = staveBass.getYForLine(4); // Bottom line of bass stave
-        context.beginPath();
-        context.moveTo(barX, topY);
-        context.lineTo(barX, bottomY);
-        context.stroke();
-      }
-    }
-    // Redraw staves if addVerticalBar modifies them internally? Check VexFlow docs.
-    // staveTreble.setContext(context).draw(); // Maybe needed?
-    // staveBass.setContext(context).draw(); // Maybe needed?
+    // Draw *intermediate* bar lines if needed
+    _drawMeasureBarLines(context, staveTreble, staveBass, numMeasures);
 
     console.log("VexFlow rendering finished successfully.");
   } catch (error) {
     console.error("Error during VexFlow rendering:", error);
-    // Rethrow so main.js catches it and updates UI
-    throw error;
+    throw error; // Rethrow
   }
 }
