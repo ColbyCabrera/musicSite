@@ -1,92 +1,303 @@
+:root {
+    --background: hsl(0 0% 100%); /* White */
+    --foreground: hsl(222.2 84% 4.9%); /* Dark Blue/Black */
+
+    --card: hsl(0 0% 100%);
+    --card-foreground: hsl(222.2 84% 4.9%);
+
+    --popover: hsl(0 0% 100%);
+    --popover-foreground: hsl(222.2 84% 4.9%);
+
+    --primary: hsl(221.2 83.2% 53.3%); /* Blue */
+    --primary-foreground: hsl(210 40% 98%); /* Light Gray/White */
+
+    --secondary: hsl(210 40% 96.1%); /* Light Gray */
+    --secondary-foreground: hsl(222.2 47.4% 11.2%); /* Dark Blue/Black */
+
+    --muted: hsl(210 40% 96.1%);
+    --muted-foreground: hsl(215.4 16.3% 46.9%); /* Gray */
+
+    --accent: hsl(210 40% 96.1%);
+    --accent-foreground: hsl(222.2 47.4% 11.2%);
+
+    --destructive: hsl(0 84.2% 60.2%); /* Red */
+    --destructive-foreground: hsl(210 40% 98%);
+
+    --success: hsl(142.1 76.2% 36.3%); /* Green */
+    --success-foreground: hsl(210 40% 98%);
+
+
+    --border: hsl(214.3 31.8% 91.4%); /* Light Gray Border */
+    --input: hsl(214.3 31.8% 91.4%);
+    --ring: hsl(221.2 83.2% 53.3%); /* Blue focus ring */
+
+    --radius: 0.5rem; /* Default border radius */
+}
+
+/* Basic Reset & Body Styling */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
 body {
-    font-family: sans-serif;
+    font-family: 'Inter', sans-serif;
+    background-color: var(--muted); /* Use a light gray background */
+    color: var(--foreground);
     line-height: 1.6;
-    margin: 20px;
-    background-color: #f4f4f4;
+    padding: 1rem; /* Add some padding */
 }
 
-h1, h2 {
-    color: #333;
-    border-bottom: 1px solid #ccc;
-    padding-bottom: 5px;
+/* Container */
+.container {
+    max-width: 56rem; /* Equivalent to max-w-4xl */
+    margin-left: auto;
+    margin-right: auto;
+    padding: 1rem; /* Add padding inside container */
 }
 
-#controls {
-    background-color: #fff;
-    padding: 20px;
-    border-radius: 5px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+/* Header */
+header {
+    margin-bottom: 2rem;
 }
 
-#controls label {
-    display: inline-block;
-    width: 200px; /* Adjust as needed */
-    margin-bottom: 10px;
-    vertical-align: middle;
+header h1 {
+    font-size: 2.25rem; /* text-3xl */
+    font-weight: 700;
+    color: var(--primary); /* Use primary color for title */
+    margin-bottom: 0.5rem;
 }
 
-#controls select,
-#controls input[type="number"],
-#controls input[type="range"] {
-    padding: 8px;
-    margin-bottom: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    min-width: 150px;
-    vertical-align: middle;
+header p {
+    color: var(--muted-foreground);
 }
-#controls input[type="range"] {
-    width: 150px; /* Specific width for range */
+
+/* Card Styling (for controls and output) */
+.card {
+    background-color: var(--card);
+    color: var(--card-foreground);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    padding: 1.5rem; /* p-6 */
+    margin-bottom: 2rem;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); /* Subtle shadow */
+}
+
+.card h2, .card h3 {
+    font-size: 1.25rem; /* text-xl */
+    font-weight: 600;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+ .card h3 {
+    font-size: 1.125rem; /* text-lg */
+    margin-top: 1.5rem; /* Add top margin for separation */
+    margin-bottom: 1rem;
+    padding-bottom: 0; /* Remove border from h3 */
+    border-bottom: none;
 }
 
 
-#controls button {
-    background-color: #5cb85c;
-    color: white;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 4px;
+/* Grid Layout for Controls */
+.controls-grid {
+    display: grid;
+    grid-template-columns: 1fr; /* Default to 1 column */
+    gap: 1.5rem; /* gap-6 */
+}
+
+@media (min-width: 768px) { /* md breakpoint */
+    .controls-grid {
+        grid-template-columns: repeat(2, 1fr); /* 2 columns on medium screens */
+    }
+}
+
+/* Form Elements Styling */
+label {
+    display: block;
+    font-size: 0.875rem; /* text-sm */
+    font-weight: 500;
+    color: var(--foreground);
+    margin-bottom: 0.25rem;
+}
+
+select,
+input[type="number"] {
+    width: 100%;
+    padding: 0.75rem; /* p-3 */
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px); /* Slightly smaller radius for inputs */
+    background-color: var(--background);
+    color: var(--foreground);
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+select:focus,
+input[type="number"]:focus {
+    outline: none;
+    border-color: var(--ring);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5); /* Ring effect */
+}
+
+/* Range Input Styling */
+.range-container {
+    margin-bottom: 1rem; /* space-y-4 equivalent */
+}
+.range-container label .range-label-detail {
+     font-size: 0.75rem; /* text-xs */
+     color: var(--muted-foreground);
+     font-weight: 400;
+}
+
+.range-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem; /* gap-3 */
+}
+
+input[type="range"] {
+    flex-grow: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px; /* Slightly thinner track */
+    background: var(--input); /* Use input background for track */
+    border-radius: 9999px;
+    outline: none;
     cursor: pointer;
-    font-size: 1em;
-    margin-right: 10px;
-    margin-top: 10px;
+    transition: background-color 0.2s;
+}
+input[type="range"]:hover {
+     background: hsl(215.3 27.9% 85.9%); /* Slightly darker track on hover */
 }
 
-#controls button:hover {
-    background-color: #4cae4c;
+/* Thumb Styles */
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--primary); /* Primary color thumb */
+    border-radius: 50%;
+    border: 2px solid var(--background); /* Add a border to make it pop */
+    cursor: pointer;
+    transition: background-color 0.2s;
 }
-#controls button:disabled {
-    background-color: #cccccc;
+ input[type="range"]::-webkit-slider-thumb:hover {
+     background: hsl(221.2 83.2% 60%); /* Slightly lighter thumb on hover */
+}
+
+input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--primary);
+    border-radius: 50%;
+    border: 2px solid var(--background);
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+ input[type="range"]::-moz-range-thumb:hover {
+     background: hsl(221.2 83.2% 60%);
+}
+
+
+.range-value-display {
+    font-weight: 600;
+    color: var(--primary);
+    width: 1.5rem; /* w-6 */
+    text-align: right;
+    font-size: 0.875rem;
+}
+
+/* Section Dividers */
+.section-divider {
+     margin-top: 2rem; /* mt-8 */
+     padding-top: 1.5rem; /* pt-6 */
+     border-top: 1px solid var(--border);
+}
+
+/* Button Styling */
+.button-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem; /* gap-4 */
+}
+
+button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    border-radius: calc(var(--radius) - 2px);
+    font-size: 0.875rem; /* text-sm */
+    font-weight: 500;
+    padding: 0.75rem 1.5rem; /* px-6 py-3 approximation */
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.15s ease-in-out, opacity 0.15s ease-in-out;
+    outline: none;
+}
+button:focus-visible { /* Use focus-visible for accessibility */
+     box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
+}
+
+
+/* Specific Button Variants */
+#generate-btn {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+}
+#generate-btn:hover {
+    background-color: hsl(221.2 83.2% 60%); /* Slightly darker blue */
+}
+
+#play-btn {
+    background-color: var(--success);
+    color: var(--success-foreground);
+}
+ #play-btn:hover:not(:disabled) {
+    background-color: hsl(142.1 76.2% 42%); /* Slightly darker green */
+}
+
+#stop-btn {
+    background-color: var(--destructive);
+    color: var(--destructive-foreground);
+}
+ #stop-btn:hover:not(:disabled) {
+     background-color: hsl(0 84.2% 65%); /* Slightly darker red */
+}
+
+/* Disabled Button State */
+button:disabled {
+    background-color: var(--secondary);
+    color: var(--muted-foreground);
     cursor: not-allowed;
+    opacity: 0.7;
 }
 
 
-#output {
-    background-color: #fff;
-    padding: 20px;
-    border-radius: 5px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    min-height: 200px;
-}
-
+/* Output Area */
 #sheet-music {
-    margin-top: 20px;
-    overflow-x: auto; /* Allow scrolling if music is wide */
+    overflow-x: auto;
+    background-color: var(--muted); /* Light background for contrast */
+    padding: 1rem;
+    border-radius: calc(var(--radius) - 2px);
+    border: 1px solid var(--border);
+    min-height: 100px; /* Ensure some height */
+}
+
+#sheet-music svg {
+    display: block;
+    margin: auto;
+    max-width: 100%;
+    height: auto;
+    background-color: white; /* White background for the SVG itself */
 }
 
 #status {
-    margin-top: 15px;
+    margin-top: 1rem;
+    font-size: 0.875rem;
+    color: var(--muted-foreground);
     font-style: italic;
-    color: #555;
-}
-
-/* Style range value displays */
-#controls span {
-    display: inline-block;
-    min-width: 20px;
-    text-align: right;
-    margin-left: 5px;
-    font-weight: bold;
-    vertical-align: middle;
 }
