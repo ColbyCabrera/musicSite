@@ -281,22 +281,22 @@ export function displayMusic(
   meter,
   numMeasures
 ) {
-  // ... (rest of displayMusic implementation remains the same, calling the revised helpers) ...
   if (!musicData || !musicData.soprano || musicData.soprano.length === 0) {
-    /* ... */
+    console.warn("displayMusic: No music data provided.");
+    outputContainer.innerHTML = "<p>No music data available.</p>";
+    return;
   }
   if (!outputContainer) {
-    /* ... */
+    throw new Error("displayMusic: Output container element not provided.");
   }
   if (typeof Vex === "undefined" || !Vex.Flow) {
-    /* ... */
+    throw new Error("displayMusic: VexFlow library not loaded.");
   }
 
   console.log("Starting VexFlow rendering...");
   outputContainer.innerHTML = ""; // Clear container
 
   try {
-    // Add try block for robustness
     const staveWidthPerMeasure = 80;
     const staveWidth = Math.max(150, numMeasures * staveWidthPerMeasure);
     const rendererWidth = staveWidth + 60;
@@ -325,7 +325,10 @@ export function displayMusic(
       key
     );
 
-    // Calls the revised _createAndFormatVexVoices
+    // *** FIX: Calculate justifiableWidth BEFORE using it ***
+    const justifiableWidth = Math.max(100, staveWidth - 20); // Define it here
+
+    // Now call _createAndFormatVexVoices with the defined variable
     const formattedVoices = _createAndFormatVexVoices(
       vexNotesByVoice,
       staveTreble,
@@ -334,15 +337,13 @@ export function displayMusic(
       justifiableWidth
     );
 
-    // Calls the revised _drawVoicesAndBeams
-    const justifiableWidth = Math.max(100, staveWidth - 20);
-    _drawVoicesAndBeams(context, formattedVoices, beams); // Pass beams here
+    // Call _drawVoicesAndBeams
+    _drawVoicesAndBeams(context, formattedVoices, beams);
 
     console.log("VexFlow rendering finished successfully.");
   } catch (error) {
     console.error("Error during VexFlow rendering:", error);
-    // Rethrow or handle display error appropriately
-    // Example: outputContainer.innerHTML = `<p style='color:red'>Render Error: ${error.message}</p>`;
-    throw error; // Rethrow so main.js catches it
+    // Rethrow so main.js catches it and updates UI
+    throw error;
   }
 }
