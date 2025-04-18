@@ -297,7 +297,7 @@ export function displayMusic(
   outputContainer.innerHTML = ""; // Clear container
 
   try {
-    const staveWidthPerMeasure = 80;
+    const staveWidthPerMeasure = 600;
     const staveWidth = Math.max(150, numMeasures * staveWidthPerMeasure);
     const rendererWidth = staveWidth + 60;
     const rendererHeight = 300;
@@ -339,6 +339,39 @@ export function displayMusic(
 
     // Call _drawVoicesAndBeams
     _drawVoicesAndBeams(context, formattedVoices, beams);
+
+    // *** ADD BAR LINES ***
+    console.log("Adding bar lines...");
+    for (let i = 1; i < numMeasures; i++) {
+      // Calculate approximate x position for the bar line
+      // This might need adjustment based on clef/key/time signature width
+      // StartX is usually where the first note begins, AFTER the initial signatures.
+      // We need the position relative to the absolute start of the stave line.
+      const barX = staveTreble.getNoteStartX() + i * (staveWidth / numMeasures); // Approximate division
+
+      // A potentially more accurate way using internal measure widths if available,
+      // but simple division is a starting point.
+      // const barX = staveTreble.getX() + staveTreble.getNoteStartX() + i * (justifiableWidth / numMeasures); // Needs testing
+
+      // Add bar line using VexFlow method if possible (check docs for exact method)
+      if (typeof staveTreble.addVerticalBar === "function") {
+        // Check VF version/docs
+        staveTreble.addVerticalBar(barX, true); // VF4? 'true' for through?
+        staveBass.addVerticalBar(barX, true);
+      } else {
+        // Fallback: Draw directly on context (less ideal)
+        console.warn("Using direct context drawing for bar lines.");
+        const topY = staveTreble.getYForLine(0); // Top line of treble stave
+        const bottomY = staveBass.getYForLine(4); // Bottom line of bass stave
+        context.beginPath();
+        context.moveTo(barX, topY);
+        context.lineTo(barX, bottomY);
+        context.stroke();
+      }
+    }
+    // Redraw staves if addVerticalBar modifies them internally? Check VexFlow docs.
+    // staveTreble.setContext(context).draw(); // Maybe needed?
+    // staveBass.setContext(context).draw(); // Maybe needed?
 
     console.log("VexFlow rendering finished successfully.");
   } catch (error) {
