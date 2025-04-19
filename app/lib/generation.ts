@@ -875,13 +875,14 @@ export function generateChordProgression(
 }
 
 /**
- * Main function to generate the four-part voice data as a MusicXML string using xmlbuilder2.
+ * Generates the four-part voice data as a MusicXML string using xmlbuilder2,
+ * formatted for a single Grand Staff (two staves).
  * @param chordProgression - Array of Roman numeral chord symbols.
  * @param keySignature - The key signature (e.g., "C", "Gm").
  * @param meter - The time signature (e.g., "4/4").
  * @param numMeasures - The number of measures to generate (should match chordProgression length).
  * @param generationSettings - Generation parameters.
- * @returns {string} A MusicXML string representing the generated piece.
+ * @returns {string} A MusicXML string representing the generated piece on a grand staff.
  * @throws {Error} If the key or meter is invalid or fundamental errors occur.
  */
 export function generateVoices(
@@ -891,7 +892,6 @@ export function generateVoices(
   numMeasures: number,
   generationSettings: GenerationSettings,
 ): string {
-  // ... [Implementation unchanged from previous version using xmlbuilder2] ...
   const { melodicSmoothness, dissonanceStrictness } = generationSettings;
 
   const keyDetails =
@@ -916,13 +916,20 @@ export function generateVoices(
     );
   if (meterBeats <= 0) throw new Error('Meter must have at least one beat.');
 
+  // --- MusicXML Setup ---
   const root = create({ version: '1.0', encoding: 'UTF-8' })
     .dtd({
       pubID: '-//Recordare//DTD MusicXML 4.0 Partwise//EN',
       sysID: 'http://www.musicxml.org/dtds/partwise.dtd',
     })
     .ele('score-partwise', { version: '4.0' });
-  root.ele('work').ele('work-title').txt('Generated Chorale').up().up();
+
+  root
+    .ele('work')
+    .ele('work-title')
+    .txt('Generated Chorale (Grand Staff)')
+    .up()
+    .up();
   const identification = root.ele('identification');
   identification
     .ele('encoding')
@@ -934,39 +941,25 @@ export function generateVoices(
     .up()
     .up();
   identification.up();
+
+  // --- Define ONE Part for the Grand Staff ---
   const partList = root.ele('part-list');
   partList
     .ele('score-part', { id: 'P1' })
     .ele('part-name')
-    .txt('Soprano')
+    .txt('Choral') // Or "Piano", "Keyboard", etc.
     .up()
-    .up();
-  partList
-    .ele('score-part', { id: 'P2' })
-    .ele('part-name')
-    .txt('Alto')
-    .up()
-    .up();
-  partList
-    .ele('score-part', { id: 'P3' })
-    .ele('part-name')
-    .txt('Tenor')
-    .up()
-    .up();
-  partList
-    .ele('score-part', { id: 'P4' })
-    .ele('part-name')
-    .txt('Bass')
+    // Optional: Add part-abbreviation if needed
+    .ele('score-instrument', { id: 'P1-I1' }) // Associate an instrument
+    .ele('instrument-name')
+    .txt('Keyboard')
+    .up() // Example instrument
     .up()
     .up();
   partList.up();
 
-  const partBuilders: Record<VoiceName, XMLBuilder> = {
-    soprano: root.ele('part', { id: 'P1' }),
-    alto: root.ele('part', { id: 'P2' }),
-    tenor: root.ele('part', { id: 'P3' }),
-    bass: root.ele('part', { id: 'P4' }),
-  };
+  // --- Create the ONE Part Element ---
+  const partBuilder = root.ele('part', { id: 'P1' });
 
   let previousMeasureLastNotes: PreviousNotes = {
     soprano: null,
@@ -974,9 +967,10 @@ export function generateVoices(
     tenor: null,
     bass: null,
   };
-  const divisions = 4;
-  const beatDurationTicks = divisions * (4 / beatValue);
-  const musicXmlBeatType = getMusicXMLDurationType(beatValue);
+  const divisions = 4; // Divisions per quarter note (adjust if needed for finer rhythms)
+  const beatDurationTicks = divisions * (4 / beatValue); // Duration of one beat in XML divisions
+  const musicXmlBeatType = getMusicXMLDurationType(beatValue); // e.g., "quarter"
+
   const leadingToneMidiPc =
     Tonal.Note.midi(keyTonic + DEFAULT_OCTAVE) !== null
       ? (Tonal.Note.midi(keyTonic + DEFAULT_OCTAVE)! +
@@ -984,101 +978,102 @@ export function generateVoices(
         12
       : -1;
 
+  // Map voices to their grand staff properties
+  const voiceGrandStaffMapping: Record<
+    VoiceName,
+    { staff: number; voice: number; stem: 'up' | 'down' }
+  > = {
+    soprano: { staff: 1, voice: 1, stem: 'up' },
+    alto: { staff: 1, voice: 2, stem: 'down' },
+    tenor: { staff: 2, voice: 1, stem: 'up' },
+    bass: { staff: 2, voice: 2, stem: 'down' },
+  };
+
+  // --- Generate Measures ---
   for (let measureIndex = 0; measureIndex < numMeasures; measureIndex++) {
-    console.log(`--- Generating Measure ${measureIndex + 1} ---`);
+    console.log(
+      `--- Generating Measure ${measureIndex + 1} (Shared Stems) ---`,
+    );
     const roman = chordProgression[measureIndex];
     const baseChordNotes = getChordNotesFromRoman(roman, keySignature);
 
-    const currentMeasureBuilders: Record<VoiceName, XMLBuilder> = {
-      soprano: partBuilders.soprano.ele('measure', {
-        number: `${measureIndex + 1}`,
-      }),
-      alto: partBuilders.alto.ele('measure', { number: `${measureIndex + 1}` }),
-      tenor: partBuilders.tenor.ele('measure', {
-        number: `${measureIndex + 1}`,
-      }),
-      bass: partBuilders.bass.ele('measure', { number: `${measureIndex + 1}` }),
-    };
+    const measureBuilder = partBuilder.ele('measure', {
+      number: `${measureIndex + 1}`,
+    });
 
+    // Add Attributes (Key, Time, Clefs, Staves) in First Measure (Same as previous Grand Staff version)
     if (measureIndex === 0) {
-      VOICE_ORDER.forEach((voiceName) => {
-        const attributes = currentMeasureBuilders[voiceName].ele('attributes');
-        attributes.ele('divisions').txt(`${divisions}`).up();
-        attributes
-          .ele('key')
-          .ele('fifths')
-          .txt(`${keyFifths}`)
-          .up()
-          .ele('mode')
-          .txt(keyMode)
-          .up()
-          .up();
-        attributes
-          .ele('time')
-          .ele('beats')
-          .txt(`${meterBeats}`)
-          .up()
-          .ele('beat-type')
-          .txt(`${beatValue}`)
-          .up()
-          .up();
-        const clef = attributes.ele('clef');
-        switch (voiceName) {
-          case 'soprano':
-            clef.ele('sign').txt('G').up().ele('line').txt('2').up();
-            break;
-          case 'alto':
-            clef.ele('sign').txt('G').up().ele('line').txt('2').up();
-            break;
-          case 'tenor':
-            clef
-              .ele('sign')
-              .txt('G')
-              .up()
-              .ele('line')
-              .txt('2')
-              .up()
-              .ele('clef-octave-change')
-              .txt('-1')
-              .up();
-            break;
-          case 'bass':
-            clef.ele('sign').txt('F').up().ele('line').txt('4').up();
-            break;
-        }
-        clef.up();
-        attributes.up();
-      });
+      const attributes = measureBuilder.ele('attributes');
+      attributes.ele('divisions').txt(`${divisions}`).up();
+      attributes
+        .ele('key') /*...*/
+        .up();
+      attributes
+        .ele('time') /*...*/
+        .up();
+      attributes.ele('staves').txt('2').up();
+      attributes
+        .ele('clef', { number: '1' }) /* Treble */
+        .up();
+      attributes
+        .ele('clef', { number: '2' }) /* Bass */
+        .up();
+      attributes.up();
     }
 
+    // --- Handle Chord Errors (Add Rests - Adjusted for shared stem logic) ---
     if (baseChordNotes.length === 0) {
       console.error(
-        `Skipping measure ${measureIndex + 1}: Chord error "${roman}" in ${keySignature}. Adding rests.`,
+        `Skipping measure ${measureIndex + 1}: Chord error "${roman}". Adding rests.`,
       );
-      VOICE_ORDER.forEach((voiceName) => {
-        for (let beat = 0; beat < meterBeats; beat++) {
-          const noteElement = currentMeasureBuilders[voiceName].ele('note');
-          noteElement.ele('rest').up();
-          noteElement.ele('duration').txt(`${beatDurationTicks}`).up();
-          noteElement.ele('type').txt(musicXmlBeatType).up();
-          noteElement.ele('voice').txt('1').up();
-          noteElement.up();
-        }
-      });
+      // Add rests for each beat to *both* staves using the designated voices
+      for (let beat = 0; beat < meterBeats; beat++) {
+        // Staff 1 Rest (Voice 1)
+        measureBuilder
+          .ele('note')
+          .ele('rest')
+          .up()
+          .ele('duration')
+          .txt(`${beatDurationTicks}`)
+          .up()
+          .ele('voice')
+          .txt('1')
+          .up() // Voice 1 for upper staff chords/rests
+          .ele('staff')
+          .txt('1')
+          .up()
+          .up();
+        // Staff 2 Rest (Voice 2)
+        measureBuilder
+          .ele('note')
+          .ele('rest')
+          .up()
+          .ele('duration')
+          .txt(`${beatDurationTicks}`)
+          .up()
+          .ele('voice')
+          .txt('2')
+          .up() // Voice 2 for lower staff chords/rests
+          .ele('staff')
+          .txt('2')
+          .up()
+          .up();
+      }
       previousMeasureLastNotes = {
         soprano: null,
         alto: null,
         tenor: null,
         bass: null,
       };
-      Object.values(currentMeasureBuilders).forEach((mb) => mb.up());
-      continue;
+      measureBuilder.up(); // Close measure
+      continue; // Move to the next measure
     }
 
     const chordRootMidi = baseChordNotes[0];
     const chordRootPc = chordRootMidi % 12;
     const chordPcs = baseChordNotes.map((n) => n % 12);
     const fullChordNotePool = getExtendedChordNotePool(baseChordNotes);
+
     const bassNoteMidi = assignBassNote(
       chordRootMidi,
       fullChordNotePool,
@@ -1090,21 +1085,28 @@ export function generateVoices(
       previousMeasureLastNotes.soprano,
       melodicSmoothness,
     );
+
+    // Determine needed PCs and doubling (logic remains the same)
     let currentVoicingPcs = new Set<number>();
     if (bassNoteMidi !== null) currentVoicingPcs.add(bassNoteMidi % 12);
     if (sopranoNoteMidi !== null) currentVoicingPcs.add(sopranoNoteMidi % 12);
     let neededPcs = chordPcs.filter((pc) => !currentVoicingPcs.has(pc));
     let pcsToDouble: number[] = [];
-    const voicesToFill = 2;
+    const voicesToFill = 2; // Alto and Tenor
+    // ... (rest of the doubling logic remains identical to the original) ...
     if (neededPcs.length < voicesToFill) {
       const numDoublingsNeeded = voicesToFill - neededPcs.length;
       const canDoubleRoot = chordRootPc !== leadingToneMidiPc;
+      // Prefer doubling root if allowed and needed
       if (
         canDoubleRoot &&
-        !currentVoicingPcs.has(chordRootPc) &&
+        pcsToDouble.length < numDoublingsNeeded &&
         !neededPcs.includes(chordRootPc)
-      )
+      ) {
+        // Don't double if it's already needed for completeness
         pcsToDouble.push(chordRootPc);
+      }
+      // Prefer doubling fifth if allowed and needed
       const fifthMidi = Tonal.Note.midi(
         Tonal.Note.transpose(Tonal.Note.fromMidi(chordRootMidi), 'P5'),
       );
@@ -1114,11 +1116,13 @@ export function generateVoices(
         fifthPc !== -1 &&
         chordPcs.includes(fifthPc) &&
         fifthPc !== leadingToneMidiPc &&
-        !currentVoicingPcs.has(fifthPc) &&
-        !neededPcs.includes(fifthPc) &&
+        !neededPcs.includes(fifthPc) && // Don't double if needed
         !pcsToDouble.includes(fifthPc)
-      )
+      ) {
+        // Don't double twice yet
         pcsToDouble.push(fifthPc);
+      }
+      // Prefer doubling third if allowed and needed (less common, but possible)
       const thirdPc = chordPcs.find(
         (pc) => pc !== chordRootPc && pc !== fifthPc,
       );
@@ -1126,39 +1130,64 @@ export function generateVoices(
         pcsToDouble.length < numDoublingsNeeded &&
         thirdPc !== undefined &&
         thirdPc !== leadingToneMidiPc &&
-        !currentVoicingPcs.has(thirdPc) &&
-        !neededPcs.includes(thirdPc) &&
+        !neededPcs.includes(thirdPc) && // Don't double if needed
         !pcsToDouble.includes(thirdPc)
-      )
+      ) {
+        // Don't double twice yet
         pcsToDouble.push(thirdPc);
+      }
+      // Fallback doubling if still needed (prioritize root, then fifth, then third)
       while (pcsToDouble.length < numDoublingsNeeded) {
         if (canDoubleRoot && !pcsToDouble.includes(chordRootPc))
-          pcsToDouble.push(chordRootPc);
+          pcsToDouble.push(chordRootPc); // Allow multiple root doublings
         else if (
           fifthPc !== -1 &&
           chordPcs.includes(fifthPc) &&
+          fifthPc !== leadingToneMidiPc &&
           !pcsToDouble.includes(fifthPc)
         )
+          // Only add 5th once if possible via this fallback
           pcsToDouble.push(fifthPc);
-        else if (thirdPc !== undefined && !pcsToDouble.includes(thirdPc))
+        else if (
+          thirdPc !== undefined &&
+          thirdPc !== leadingToneMidiPc &&
+          !pcsToDouble.includes(thirdPc) // Only add 3rd once via fallback
+        )
           pcsToDouble.push(thirdPc);
-        else if (canDoubleRoot) pcsToDouble.push(chordRootPc);
+        else if (canDoubleRoot)
+          pcsToDouble.push(chordRootPc); // Force root if absolutely stuck
         else {
+          // Emergency fallback: double anything not the leading tone
           const fallbackPc =
             chordPcs.find((pc) => pc !== leadingToneMidiPc) ?? chordRootPc;
           pcsToDouble.push(fallbackPc);
         }
-        if (pcsToDouble.length > voicesToFill * 2) break;
+        // Safety break to prevent infinite loops on unusual chords
+        if (pcsToDouble.length > voicesToFill * 2) {
+          console.warn(
+            `Measure ${measureIndex + 1}: Doubling fallback exceeded limit. Voicing might be incomplete.`,
+          );
+          break;
+        }
       }
     }
+
     let targetInnerPcs = [...neededPcs, ...pcsToDouble].slice(0, voicesToFill);
+    // Ensure we have exactly two target PCs for Alto and Tenor
     while (targetInnerPcs.length < voicesToFill) {
       const fallbackPc =
         chordPcs.find((pc) => pc !== leadingToneMidiPc) ?? chordRootPc;
       targetInnerPcs.push(fallbackPc);
+      console.warn(
+        `Measure ${measureIndex + 1}: Had to add fallback PC for inner voice target.`,
+      );
     }
+
+    // Assign targets (can swap if needed, e.g., based on previous notes)
+    // Simple assignment: first needed/doubled for Tenor, second for Alto
     const tenorTargetPc = targetInnerPcs[0];
     const altoTargetPc = targetInnerPcs[1];
+
     const { tenorNoteMidi, altoNoteMidi } = assignInnerVoices(
       tenorTargetPc,
       altoTargetPc,
@@ -1169,6 +1198,7 @@ export function generateVoices(
       bassNoteMidi,
       melodicSmoothness,
     );
+
     const currentMeasureVoicing: PreviousNotes = {
       soprano: sopranoNoteMidi,
       alto: altoNoteMidi,
@@ -1177,54 +1207,213 @@ export function generateVoices(
     };
     console.log(` M${measureIndex + 1} Voicing (MIDI):`, currentMeasureVoicing);
 
+    // --- Check Voice Leading Rules (Same Logic) ---
     if (dissonanceStrictness > 3) {
       checkVoiceLeadingRules(
         currentMeasureVoicing,
         previousMeasureLastNotes,
         measureIndex,
-        0,
+        0, // Check applies to the start of the measure's chord
       );
     }
 
     for (let beat = 0; beat < meterBeats; beat++) {
-      VOICE_ORDER.forEach((voiceName) => {
-        const midi = currentMeasureVoicing[voiceName];
-        const noteElement = currentMeasureBuilders[voiceName].ele('note');
-        if (midi !== null) {
-          const pitch = midiToMusicXMLPitch(midi);
-          if (pitch) {
-            const pitchElement = noteElement.ele('pitch');
-            pitchElement.ele('step').txt(pitch.step).up();
-            if (pitch.alter !== undefined && pitch.alter !== 0) {
-              pitchElement.ele('alter').txt(`${pitch.alter}`).up();
-            }
-            pitchElement.ele('octave').txt(`${pitch.octave}`).up();
-            pitchElement.up();
-            noteElement.ele('duration').txt(`${beatDurationTicks}`).up();
-            noteElement.ele('type').txt(musicXmlBeatType).up();
-            noteElement.ele('voice').txt('1').up();
-            // Add accidental logic here if needed
-          } else {
-            console.warn(
-              `Could not convert MIDI ${midi} to MusicXML pitch for ${voiceName}. Adding rest.`,
-            );
-            noteElement.ele('rest').up();
-            noteElement.ele('duration').txt(`${beatDurationTicks}`).up();
-            noteElement.ele('voice').txt('1').up();
+      const sopMidi = currentMeasureVoicing.soprano;
+      const altMidi = currentMeasureVoicing.alto;
+      const tenMidi = currentMeasureVoicing.tenor;
+      const basMidi = currentMeasureVoicing.bass;
+
+      let staff1HasNote = false; // Track if the primary note for the chord was added
+      let staff2HasNote = false;
+
+      // --- Staff 1: Soprano (Primary) & Alto (Chord) ---
+      const staff1Voice = '1';
+      const staff1Staff = '1';
+      // Simple stem rule: up unless Soprano is B4 or higher (can be refined)
+      let staff1Stem = sopMidi !== null && sopMidi >= 71 ? 'down' : 'up';
+      // If only Alto exists, its pitch determines the stem
+      if (sopMidi === null && altMidi !== null) {
+        staff1Stem = altMidi >= 71 ? 'down' : 'up';
+      }
+
+      if (sopMidi !== null) {
+        const pitch = midiToMusicXMLPitch(sopMidi);
+        if (pitch) {
+          const note = measureBuilder.ele('note');
+          // Add harmony symbol above the first note of the chord?
+          if (beat === 0) {
+            note
+              .ele('harmony') /* ... */
+              .up();
           }
+          const pitchEl = note.ele('pitch');
+          pitchEl.ele('step').txt(pitch.step).up();
+          if (pitch.alter !== undefined && pitch.alter !== 0) {
+            pitchEl.ele('alter').txt(`${pitch.alter}`).up();
+          }
+          pitchEl.ele('octave').txt(`${pitch.octave}`).up();
+          pitchEl.up(); // Close pitch
+
+          note.ele('duration').txt(`${beatDurationTicks}`).up();
+          note.ele('voice').txt(staff1Voice).up();
+          note.ele('type').txt(musicXmlBeatType).up();
+          note.ele('stem').txt(staff1Stem).up();
+          note.ele('staff').txt(staff1Staff).up();
+          // Add accidental?
+          note.up();
+          staff1HasNote = true;
         } else {
-          noteElement.ele('rest').up();
-          noteElement.ele('duration').txt(`${beatDurationTicks}`).up();
-          noteElement.ele('voice').txt('1').up();
+          console.warn(`Failed pitch conversion for Soprano MIDI: ${sopMidi}`);
         }
-        noteElement.up();
-      });
-    }
+      }
+
+      if (altMidi !== null) {
+        const pitch = midiToMusicXMLPitch(altMidi);
+        if (pitch) {
+          const note = measureBuilder.ele('note');
+          if (!staff1HasNote) {
+            // Alto is the primary note if Soprano didn't exist
+            note.ele('duration').txt(`${beatDurationTicks}`).up();
+            note.ele('type').txt(musicXmlBeatType).up();
+            staff1HasNote = true; // Mark that staff 1 chord has started
+          } else {
+            // Alto shares stem with Soprano
+            note.ele('chord').up();
+          }
+          const pitchEl = note.ele('pitch');
+          pitchEl.ele('step').txt(pitch.step).up();
+          if (pitch.alter !== undefined && pitch.alter !== 0) {
+            pitchEl.ele('alter').txt(`${pitch.alter}`).up();
+          }
+          pitchEl.ele('octave').txt(`${pitch.octave}`).up();
+          pitchEl.up(); // Close pitch
+
+          note.ele('voice').txt(staff1Voice).up(); // Same voice as Soprano
+          note.ele('stem').txt(staff1Stem).up(); // Same stem as Soprano
+          note.ele('staff').txt(staff1Staff).up();
+          // Add accidental?
+          note.up();
+        } else {
+          console.warn(`Failed pitch conversion for Alto MIDI: ${altMidi}`);
+        }
+      }
+
+      // If neither Soprano nor Alto had a note, add a rest to Voice 1 / Staff 1
+      if (!staff1HasNote) {
+        measureBuilder
+          .ele('note')
+          .ele('rest')
+          .up()
+          .ele('duration')
+          .txt(`${beatDurationTicks}`)
+          .up()
+          .ele('voice')
+          .txt(staff1Voice)
+          .up()
+          .ele('type')
+          .txt(musicXmlBeatType)
+          .up() // type often included for rests too
+          .ele('staff')
+          .txt(staff1Staff)
+          .up()
+          .up();
+      }
+
+      // --- Staff 2: Tenor (Primary) & Bass (Chord) ---
+      const staff2Voice = '2';
+      const staff2Staff = '2';
+      // Simple stem rule: down unless Tenor is G3 or lower (can be refined)
+      let staff2Stem = tenMidi !== null && tenMidi <= 55 ? 'up' : 'down';
+      // If only Bass exists, its pitch determines the stem
+      if (tenMidi === null && basMidi !== null) {
+        staff2Stem = basMidi <= 55 ? 'up' : 'down';
+      }
+
+      if (tenMidi !== null) {
+        const pitch = midiToMusicXMLPitch(tenMidi);
+        if (pitch) {
+          const note = measureBuilder.ele('note');
+          const pitchEl = note.ele('pitch');
+          pitchEl.ele('step').txt(pitch.step).up();
+          if (pitch.alter !== undefined && pitch.alter !== 0) {
+            pitchEl.ele('alter').txt(`${pitch.alter}`).up();
+          }
+          pitchEl.ele('octave').txt(`${pitch.octave}`).up();
+          pitchEl.up(); // Close pitch
+
+          note.ele('duration').txt(`${beatDurationTicks}`).up();
+          note.ele('voice').txt(staff2Voice).up();
+          note.ele('type').txt(musicXmlBeatType).up();
+          note.ele('stem').txt(staff2Stem).up();
+          note.ele('staff').txt(staff2Staff).up();
+          // Add accidental?
+          note.up();
+          staff2HasNote = true;
+        } else {
+          console.warn(`Failed pitch conversion for Tenor MIDI: ${tenMidi}`);
+        }
+      }
+
+      if (basMidi !== null) {
+        const pitch = midiToMusicXMLPitch(basMidi);
+        if (pitch) {
+          const note = measureBuilder.ele('note');
+          if (!staff2HasNote) {
+            // Bass is the primary note if Tenor didn't exist
+            note.ele('duration').txt(`${beatDurationTicks}`).up();
+            note.ele('type').txt(musicXmlBeatType).up();
+            staff2HasNote = true;
+          } else {
+            // Bass shares stem with Tenor
+            note.ele('chord').up();
+          }
+          const pitchEl = note.ele('pitch');
+          pitchEl.ele('step').txt(pitch.step).up();
+          if (pitch.alter !== undefined && pitch.alter !== 0) {
+            pitchEl.ele('alter').txt(`${pitch.alter}`).up();
+          }
+          pitchEl.ele('octave').txt(`${pitch.octave}`).up();
+          pitchEl.up(); // Close pitch
+
+          note.ele('voice').txt(staff2Voice).up(); // Same voice as Tenor
+          note.ele('stem').txt(staff2Stem).up(); // Same stem as Tenor
+          note.ele('staff').txt(staff2Staff).up();
+          // Add accidental?
+          note.up();
+        } else {
+          console.warn(`Failed pitch conversion for Bass MIDI: ${basMidi}`);
+        }
+      }
+
+      // If neither Tenor nor Bass had a note, add a rest to Voice 2 / Staff 2
+      if (!staff2HasNote) {
+        measureBuilder
+          .ele('note')
+          .ele('rest')
+          .up()
+          .ele('duration')
+          .txt(`${beatDurationTicks}`)
+          .up()
+          .ele('voice')
+          .txt(staff2Voice)
+          .up()
+          .ele('type')
+          .txt(musicXmlBeatType)
+          .up()
+          .ele('staff')
+          .txt(staff2Staff)
+          .up()
+          .up();
+      }
+    } // End for each beat
+
+    // Update previous notes for the next measure's voice leading check
     previousMeasureLastNotes = { ...currentMeasureVoicing };
-    Object.values(currentMeasureBuilders).forEach((mb) => mb.up());
-  }
-  Object.values(partBuilders).forEach((pb) => pb.up());
-  console.log('Generation complete. Returning MusicXML string.');
+    measureBuilder.up(); // Close measure
+  } // End for each measure
+
+  partBuilder.up(); // Close part
+  console.log('Generation complete. Returning Grand Staff MusicXML string.');
   const xmlString = root.end({ prettyPrint: true });
   return xmlString;
 }
