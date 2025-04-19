@@ -67,37 +67,135 @@ export interface GenerationSettings {
  * @param key - Key signature (e.g., "C", "Gm").
  * @returns Array of MIDI note numbers for the chord, or empty if error.
  */
-function getChordNotesFromRoman(roman: string, key: string): number[] {
+function getChordNotesFromRoman(roman: string, keyName: string): number[] {
   try {
-    const chordSymbol = Tonal.RomanNumeral.get(roman);
-    console.log(chordSymbol);
-
-    // Ensure octave is reasonable for chord generation context
-    // Tonal's RomanNumeral often includes octave, use it if present, else default
-    const chordOctave = DEFAULT_OCTAVE;
-    const chordName = chordSymbol.name + chordOctave; // e.g., Cmaj74
-    // Transpose relative to key tonic at octave 0 to get absolute chord name
-    const absoluteChordName = Tonal.Chord.transpose(chordName, key + '0');
-
-    console.log(chordSymbol);
-    const chord = Tonal.Chord.get(absoluteChordName);
-
-    if (!chord || chord.empty) {
+    // Tonal needs the key type (major/minor) implicitly via Tonal.Key functions.
+    const keyDetails =
+      Tonal.Key.majorKey(keyName) || Tonal.Key.minorKey(keyName);
+    if (!keyDetails || !keyDetails.chords || !keyDetails.chordScales) {
+      // Check for essential details
       console.warn(
-        `Tonal could not parse chord: ${roman} in key ${key} (Derived: ${absoluteChordName})`,
+        `Could not get valid key details or chords for key "${keyName}". Roman: "${roman}"`,
       );
       return [];
     }
-    // Get MIDI notes, ensuring they are valid numbers
-    return chord.notes
-      .map((n) => Tonal.Note.midi(n)) // Get MIDI from note names (e.g., C4)
-      .filter((midi): midi is number => midi !== null); // Type guard
+    const tonic = keyDetails.tonic;
+    const keyType = keyDetails.type; // 'major' or 'minor'
+
+    // Map Roman numerals (I-VII) to array indices (0-6).
+    const romanMap = { I: 0, II: 1, III: 2, IV: 3, V: 4, VI: 5, VII: 6 };
+    const baseRomanMatch = roman.match(/([iv]+)/i); // Extract I, II, V etc. (case-insensitive)
+    if (!baseRomanMatch) {
+      console.warn(
+        `Could not parse base Roman numeral from "${roman}" in key "${keyName}".`,
+      );
+      return [];
+    }
+    const baseRomanUpper = baseRomanMatch[1].toUpperCase(); // e.g., "V" from "V7" or "v"
+    const scaleDegreeIndex = romanMap[baseRomanUpper as keyof typeof romanMap];
+
+    if (scaleDegreeIndex === undefined) {
+      console.warn(
+        `Could not map Roman numeral "${baseRomanUpper}" (from "${roman}") to a scale degree index.`,
+      );
+      return [];
+    }
+
+    // Get the diatonic chords directly from Tonal.Key for the specified key.
+    // Example: C major -> ["CM", "Dm", "Em", "FM", "GM", "Am", "B°"]
+    const diatonicChords = keyDetails.chords;
+    if (scaleDegreeIndex >= diatonicChords.length) {
+      console.warn(
+        `Scale degree index ${scaleDegreeIndex} is out of bounds for diatonic chords in key "${keyName}". Chords: ${diatonicChords}`,
+      );
+      return [];
+    }
+
+    let chordSymbol = diatonicChords[scaleDegreeIndex]; // Base diatonic chord symbol (e.g., "GM", "Dm")
+
+    // If the input Roman numeral includes a '7' (e.g., "V7"), attempt to use the 7th chord.
+    if (roman.includes('7') && !chordSymbol.includes('7')) {
+      const seventhChordSymbol = chordSymbol + '7';
+      // Check if Tonal recognizes this constructed 7th chord symbol.
+      const chordInfo = Tonal.Chord.get(seventhChordSymbol);
+      if (!chordInfo.empty) {
+        chordSymbol = seventhChordSymbol; // Use the valid 7th chord symbol.
+      } else {
+        // Warn if the requested 7th is invalid, but proceed with the diatonic triad/chord.
+        console.warn(
+          `Input "${roman}" requested a 7th, but "${seventhChordSymbol}" is not a valid Tonal chord symbol in key "${keyName}". Using diatonic chord "${chordSymbol}".`,
+        );
+      }
+    }
+    // TODO: Could add similar logic for other chord extensions/qualities (e.g., dim, aug) if needed.
+
+    // Get the detailed chord object from Tonal using the final determined symbol.
+    const chord = Tonal.Chord.get(chordSymbol);
+    if (!chord || chord.empty || !chord.notes || chord.notes.length === 0) {
+      console.warn(
+        `Could not get valid notes for chord symbol "${chordSymbol}" (derived from Roman "${roman}" in key "${keyName}").`,
+      );
+      return [];
+    }
+
+    // Determine a suitable root MIDI note, aiming for octave 3 or 4.
+    if (!chord.tonic) {
+      console.warn(
+        `Chord symbol "${chordSymbol}" does not have a valid tonic.`,
+      );
+      return [];
+    }
+    const rootNote = Tonal.Note.get(chord.tonic); // { letter, acc, oct } - oct might be undefined
+    // Estimate MIDI: If root is A or B, start octave 3; otherwise, start octave 4.
+    const rootOctaveGuess =
+      rootNote.letter === 'A' || rootNote.letter === 'B' ? 3 : 4;
+    const rootMidiGuess = Tonal.Note.midi(
+      rootNote.letter + rootNote.acc + rootOctaveGuess,
+    );
+
+    if (rootMidiGuess === null) {
+      console.warn(
+        `Could not determine a root MIDI value for chord "${chordSymbol}".`,
+      );
+      return [];
+    }
+    const rootNoteName = Tonal.Note.fromMidi(rootMidiGuess); // Get the note name for transposition
+    if (!rootNoteName) {
+      console.warn(
+        `Could not get note name from root MIDI ${rootMidiGuess} for chord "${chordSymbol}".`,
+      );
+      return [];
+    }
+
+    // Calculate all chord note MIDIs by transposing the root note by the chord's intervals.
+    return chord.intervals
+      .map((interval) => {
+        try {
+          // Transpose the determined root note name (e.g., "G4") by the interval (e.g., "3M").
+          const transposedNoteName = Tonal.transpose(rootNoteName, interval);
+          if (!transposedNoteName) {
+            console.warn(
+              `Tonal.transpose returned null for ${rootNoteName} + ${interval}`,
+            );
+            return null;
+          }
+          // Convert the resulting note name (e.g., "B4") back to MIDI.
+          return Tonal.Note.midi(transposedNoteName);
+        } catch (transposeError) {
+          console.error(
+            `Error during Tonal.transpose(${rootNoteName}, ${interval}):`,
+            transposeError,
+          );
+          return null;
+        }
+      })
+      .filter((midi) => midi !== null); // Remove any nulls resulting from errors.
   } catch (error) {
     console.error(
-      `Error parsing Roman numeral "${roman}" in key "${key}":`,
+      `Unexpected error getting chord notes for Roman "${roman}" in key "${keyName}":`,
       error,
     );
-    return [];
+    return []; // Return empty array on any unexpected error.
   }
 }
 
@@ -119,7 +217,7 @@ function getExtendedChordNotePool(baseChordNotes: number[]): number[] {
     });
   });
   // Ensure the pool is sorted and unique, filtering out unreasonable notes
-  return [...new Set(pool)]
+  return Array.from(new Set(pool))
     .sort((a, b) => a - b)
     .filter((n) => n >= 21 && n <= 108); // A0 to C8
 }
@@ -163,7 +261,16 @@ function midiToMusicXMLPitch(midi: number): MusicXMLPitch | null {
     }
 
     const step = noteDetails.letter; // Should be C, D, E, F, G, A, B
-    const alter = Tonal.Accidental.alter(noteDetails.acc); // Tonal uses symbols, convert to number
+    const alter =
+      noteDetails.acc === '#'
+        ? 1
+        : noteDetails.acc === '##'
+          ? 2
+          : noteDetails.acc === 'b'
+            ? -1
+            : noteDetails.acc === 'bb'
+              ? -2
+              : 0; // Convert accidental symbol to number
     const octave = noteDetails.oct;
 
     // MusicXML 'alter': 0=natural, 1=sharp, -1=flat, 2=double sharp, -2=double flat
@@ -692,7 +799,11 @@ export function generateChordProgression(
       allowedChords.push(dominant7Roman);
     }
   }
-  allowedChords = [...new Set(allowedChords)];
+  const uniqueChords = new Set<string>(allowedChords);
+  allowedChords = [];
+  uniqueChords.forEach((chord) => {
+    allowedChords.push(chord);
+  });
   let progression: string[] = [tonicRoman];
   let prevChord = tonicRoman;
   const MAX_ATTEMPTS = 5;
