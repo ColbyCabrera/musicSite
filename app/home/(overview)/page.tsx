@@ -11,11 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/app/ui/shadcn/components/ui/card';
-import {
-  GenerationSettings,
-  generateChordProgression,
-  generateVoices,
-} from '@/app/lib/generation';
 import { Label } from '@/app/ui/shadcn/components/ui/label';
 import { Input } from '@/app/ui/shadcn/components/ui/input';
 import { Slider } from '@/app/ui/shadcn/components/slider';
@@ -31,6 +26,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/ui/shadcn/components/ui/select';
+import { GenerationSettings } from '@/app/lib/types';
+import { generateChordProgression } from '@/app/lib/progression';
+import { generateVoices } from '@/app/lib/generate';
 
 // --- Helper Data ---
 const commonKeys = [
