@@ -20,13 +20,18 @@ const VOICE_ORDER_SATB: ReadonlyArray<VoiceNameSATB> = [
   'bass',
 ];
 
-/** Standard MIDI note ranges for SATB voices. */
-const VOICE_RANGES: Readonly<Record<VoiceName, [number, number]>> = {
+/** Standard MIDI note ranges for SATB voices. Also used for Melody/Accompaniment ranges. */
+const VOICE_RANGES: Readonly<
+  Record<VoiceNameSATB | 'melody' | 'accompaniment', [number, number]>
+> = {
   soprano: [60, 81], // C4 to A5
   alto: [55, 74], // G3 to D5
+  // Ranges for Melody + Accompaniment Style
+  melody: [60, 84], // C4 to C6 - Slightly wider range for melody
+  accompaniment: [36, 72], // C2 to C5 - Typical keyboard accompaniment range
   tenor: [48, 69], // C3 to A4
-  bass: [40, 62], // E2 to D4
-};
+/** Maximum interval allowed between adjacent upper voices (SATB). */
+const VOICE_SPACING_LIMIT_SATB = {
 
 /** Maximum interval allowed between adjacent upper voices (in semitones). */
 const VOICE_SPACING_LIMIT = {
