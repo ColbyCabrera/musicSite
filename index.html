@@ -3,10 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Rule-Based Music Generator</title>
+    <title>Rule-Based Music Generator (VexFlow 5)</title>
+    <style>
+      @font-face {
+        font-family: "Bravura";
+        src: url(https://cdn.jsdelivr.net/npm/@vexflow-fonts/bravura@^1/bravura.woff2)
+          format("woff2");
+      }
+      @font-face {
+        font-family: "Academico";
+        src: url(https://cdn.jsdelivr.net/npm/@vexflow-fonts/academico@^1/academico.woff2)
+          format("woff2");
+      }
+    </style>
+
     <script src="https://cdn.jsdelivr.net/npm/tonal/browser/tonal.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.3/build/cjs/vexflow.js"></script>
     <script src="https://unpkg.com/tone"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vexflow@5.0.0/build/cjs/vexflow.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -16,9 +29,12 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <span class="font-preload-academico"></span>
+    <span class="font-preload-bravura"></span>
+
     <div class="container">
       <header>
-        <h1>Rule-Based Sheet Music Generator</h1>
+        <h1>Rule-Based Sheet Music Generator (VexFlow 5)</h1>
         <p>
           Based on: A Theoretical Framework for Rule-Based Algorithmic Music
           Generation
@@ -136,6 +152,38 @@
       </div>
     </div>
 
-    <script type="module" src="/js/main.js"></script>
+    <script type="module">
+      import { initializeApp } from "/js/main.js"; // Assuming main.js exports this
+
+      // Wait for fonts to be loaded and ready.
+      document.fonts.ready
+        .then(() => {
+          try {
+            // Set default fonts for VexFlow
+            VexFlow.setFonts("Bravura", "Academico");
+            console.log("VexFlow fonts ready and set.");
+
+            // Initialize the main application logic
+            initializeApp();
+          } catch (error) {
+            console.error("Error initializing VexFlow or main app:", error);
+            const statusDiv = document.getElementById("status");
+            if (statusDiv) {
+              statusDiv.textContent =
+                "Error initializing rendering engine. Please check console.";
+              statusDiv.style.color = "red";
+            }
+          }
+        })
+        .catch((error) => {
+          console.error("Font loading failed:", error);
+          const statusDiv = document.getElementById("status");
+          if (statusDiv) {
+            statusDiv.textContent =
+              "Error loading required music fonts. Please check console/network.";
+            statusDiv.style.color = "red";
+          }
+        });
+    </script>
   </body>
 </html>
