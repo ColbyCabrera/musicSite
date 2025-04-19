@@ -19,13 +19,6 @@ import {
   generateVoices,
 } from '@/app/lib/generation';
 import { Label } from '@radix-ui/react-label';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@radix-ui/react-select';
 import { Input } from '@/app/ui/shadcn/components/ui/input';
 import { Slider } from '@/app/ui/shadcn/components/slider';
 import {
@@ -33,7 +26,13 @@ import {
   AlertDescription,
   AlertTitle,
 } from '@/app/ui/shadcn/components/alert';
-
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/app/ui/shadcn/components/ui/select';
 
 // --- Helper Data ---
 const commonKeys = [
@@ -109,7 +108,7 @@ export default function Page() {
         const settings: GenerationSettings = {
           melodicSmoothness,
           dissonanceStrictness,
-          generationStyle: "SATB", // Changed generation style to an allowed value
+          generationStyle: 'MelodyAccompaniment', // Changed generation style to an allowed value
         };
 
         // 1. Generate Progression
