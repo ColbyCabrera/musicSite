@@ -1,4 +1,4 @@
-'use client'; 
+'use client';
 
 import { useState } from 'react';
 import { Loader2, Download } from 'lucide-react';
@@ -16,7 +16,7 @@ import {
   generateChordProgression,
   generateVoices,
 } from '@/app/lib/generation';
-import { Label } from '@radix-ui/react-label';
+import { Label } from '@/app/ui/shadcn/components/ui/label';
 import { Input } from '@/app/ui/shadcn/components/ui/input';
 import { Slider } from '@/app/ui/shadcn/components/slider';
 import {
@@ -67,6 +67,10 @@ const commonKeys = [
 ];
 const commonMeters = ['4/4', '3/4', '2/4', '2/2', '6/8', '9/8', '12/8'];
 
+// Define the possible generation styles
+type GenerationStyle = 'SATB' | 'MelodyAccompaniment';
+const generationStyles: GenerationStyle[] = ['SATB', 'MelodyAccompaniment'];
+
 export default function Page() {
   // --- State Variables ---
   const [keySignature, setKeySignature] = useState<string>('C');
@@ -75,6 +79,9 @@ export default function Page() {
   const [harmonicComplexity, setHarmonicComplexity] = useState<number>(5); // Slider value 0-10
   const [melodicSmoothness, setMelodicSmoothness] = useState<number>(7); // Slider value 0-10
   const [dissonanceStrictness, setDissonanceStrictness] = useState<number>(5); // Slider value 0-10
+  // --- NEW STATE for Generation Style ---
+  const [generationStyle, setGenerationStyle] =
+    useState<GenerationStyle>('SATB'); // Default to SATB
 
   const [generatedProgression, setGeneratedProgression] = useState<
     string[] | null
@@ -106,7 +113,8 @@ export default function Page() {
         const settings: GenerationSettings = {
           melodicSmoothness,
           dissonanceStrictness,
-          generationStyle: 'MelodyAccompaniment', // Changed generation style to an allowed value
+          // --- USE STATE for generationStyle ---
+          generationStyle: generationStyle,
         };
 
         // 1. Generate Progression
@@ -123,7 +131,7 @@ export default function Page() {
           keySignature,
           meter,
           numMeasures,
-          settings,
+          settings, // Pass the updated settings object
         );
         setGeneratedMusicXml(musicXml);
       } catch (err) {
@@ -151,7 +159,7 @@ export default function Page() {
     a.href = url;
     // Sanitize key signature for filename
     const safeKey = keySignature.replace(/#/g, 's').replace(/b/g, 'f');
-    a.download = `generated-chorale-${safeKey}-${Date.now()}.musicxml`;
+    a.download = `generated-${generationStyle.toLowerCase()}-${safeKey}-${Date.now()}.musicxml`; // Include style in filename
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -167,12 +175,13 @@ export default function Page() {
             Music Generation Interface
           </CardTitle>
           <CardDescription>
-            Configure parameters and generate a four-part chorale.
+            Configure parameters and generate music in different styles.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* --- Input Controls --- */}
-          <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-2">
+          {/* Adjusted grid columns for 3 items */}
+          <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-3">
             {/* Key Signature */}
             <div className="space-y-2">
               <Label htmlFor="key-select">Key Signature</Label>
@@ -207,7 +216,33 @@ export default function Page() {
               </Select>
             </div>
 
-            {/* Number of Measures */}
+            {/* --- NEW: Generation Style Select --- */}
+            <div className="space-y-2">
+              <Label htmlFor="style-select">Generation Style</Label>
+              <Select
+                value={generationStyle}
+                // Explicitly type the value passed to the setter
+                onValueChange={(value: GenerationStyle) =>
+                  setGenerationStyle(value)
+                }
+              >
+                <SelectTrigger id="style-select">
+                  <SelectValue placeholder="Select style..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {generationStyles.map((style) => (
+                    <SelectItem key={style} value={style}>
+                      {/* Display name could be customized here if needed */}
+                      {style}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Number of Measures (Moved to its own row for better layout) */}
+          <div className="grid grid-cols-1 gap-4">
             <div className="space-y-2">
               <Label htmlFor="num-measures">Number of Measures</Label>
               <Input
@@ -217,7 +252,8 @@ export default function Page() {
                 max="64" // Set a reasonable max
                 value={numMeasures}
                 onChange={(e) =>
-                  setNumMeasures(parseInt(e.target.value, 10) || 1)
+                  // Ensure value is at least 1
+                  setNumMeasures(Math.max(1, parseInt(e.target.value, 10) || 1))
                 }
               />
             </div>
