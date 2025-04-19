@@ -1,6 +1,4 @@
-// app/page.tsx (or wherever your page component resides)
-
-'use client'; // Required for useState, useEffect, and event handlers
+'use client'; 
 
 import { useState } from 'react';
 import { Loader2, Download } from 'lucide-react';
