@@ -109,6 +109,7 @@ export default function Page() {
         const settings: GenerationSettings = {
           melodicSmoothness,
           dissonanceStrictness,
+          generationStyle: "SATB", // Changed generation style to an allowed value
         };
 
         // 1. Generate Progression
