@@ -60,7 +60,7 @@ export function midiToVexflowKey(midi, keyName) {
 
     const noteComponents = Tonal.Note.get(finalNoteName);
     const vexOctave = Math.floor(midi / 12) - 1;
-    return `${noteComponents.letter}${noteComponents.acc}${vexOctave}`;
+    return `${noteComponents.letter.toLowerCase()}${noteComponents.acc}/${vexOctave}`;
 }
 
 /**

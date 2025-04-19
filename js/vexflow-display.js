@@ -65,12 +65,16 @@ function getDurationValue(durationString) {
  * @returns {object} - { soprano: [Vex.Flow.Tickable], alto: [...], ... }
  */
 function _processMusicDataToVexTickables(musicData, key, meter) {
+ 
+
   const vexTickablesByVoice = { soprano: [], alto: [], tenor: [], bass: [] };
+
   const currentVexKeySignature = new KeySignature(key);
+
   const [beatsPerMeasure, beatValue] = meter.split("/").map(Number);
   // Calculate measure duration in terms of whole notes (e.g., 4/4 = 1, 3/4 = 0.75)
   const measureDuration = beatsPerMeasure / beatValue;
-  const tickResolution = 4096; // Standard VexFlow ticks per quarter note
+  const tickResolution = 4096 // Standard VexFlow ticks per quarter note
   const ticksPerMeasure = new Fraction(beatsPerMeasure, beatValue)
     .multiply(new Fraction(tickResolution * 4))
     .value();
@@ -88,6 +92,7 @@ function _processMusicDataToVexTickables(musicData, key, meter) {
 
     musicData[voiceName].forEach((noteData, index) => {
       // --- Create StaveNote (similar logic to before) ---
+ 
       const noteProps = {
         keys: noteData.isRest ? ["b/4"] : [noteData.vexKey], // Default rest position
         duration: noteData.duration.replace(/\./g, ""), // Base duration without dots
@@ -98,7 +103,7 @@ function _processMusicDataToVexTickables(musicData, key, meter) {
       if (noteData.isRest) {
         noteProps.duration += "r";
       }
-
+      console.log(noteProps);
       const staveNote = new StaveNote(noteProps);
 
       // --- Accidental Logic (same as before) ---
@@ -212,6 +217,7 @@ export function displayMusic(
   meter,
   numMeasures
 ) {
+  console.log("HERE!!!");
   if (!musicData || !musicData.soprano || musicData.soprano.length === 0) {
     outputContainer.innerHTML = "No music data to display.";
     console.warn("displayMusic called with empty or invalid musicData.");
@@ -243,6 +249,7 @@ export function displayMusic(
 
     const score = factory.EasyScore();
 
+    console.log("HERE!!!");
     // Process notes and automatically add barlines
     const tickablesByVoice = _processMusicDataToVexTickables(
       musicData,
