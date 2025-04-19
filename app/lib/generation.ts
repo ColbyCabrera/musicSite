@@ -1,13 +1,15 @@
 // src/generation.ts
-// Description: Consolidated core logic for generating chord progressions
-//              and four-part voice leading, outputting MusicXML.
+// Description:
+// Consolidated core logic for generating chord progressions
+// and four-part voice leading, outputting MusicXML for Grand Staff
+// with shared stems.
 
 // --- Library Imports ---
 import * as Tonal from 'tonal';
 import { create } from 'xmlbuilder2';
 import { XMLBuilder } from 'xmlbuilder2/lib/interfaces'; // Optional: For type hints
 
-// --- Configuration Constants (Previously in config.ts) ---
+// --- Configuration Constants ---
 
 /** Defines the standard order of voices from highest to lowest. */
 type VoiceName = 'soprano' | 'alto' | 'tenor' | 'bass';
@@ -59,143 +61,126 @@ export interface GenerationSettings {
   dissonanceStrictness: number; // Typically 0-10 (controls rule checking)
 }
 
-// --- Tonal & MusicXML Helper Functions (Previously in tonal-helpers.ts) ---
+// --- Tonal & MusicXML Helper Functions ---
 
 /**
  * Gets the MIDI notes of a chord based on its Roman numeral in a given key.
  * @param roman - Roman numeral symbol (e.g., "V7", "ii", "IV").
- * @param key - Key signature (e.g., "C", "Gm").
+ * @param keyName - Key signature (e.g., "C", "Gm").
  * @returns Array of MIDI note numbers for the chord, or empty if error.
  */
 function getChordNotesFromRoman(roman: string, keyName: string): number[] {
   try {
-    // Tonal needs the key type (major/minor) implicitly via Tonal.Key functions.
     const keyDetails =
       Tonal.Key.majorKey(keyName) || Tonal.Key.minorKey(keyName);
     if (!keyDetails || !keyDetails.chords || !keyDetails.chordScales) {
-      // Check for essential details
       console.warn(
-        `Could not get valid key details or chords for key "${keyName}". Roman: "${roman}"`,
+        `Could not get valid key details for key "${keyName}". Roman: "${roman}"`,
       );
       return [];
     }
     const tonic = keyDetails.tonic;
-    const keyType = keyDetails.type; // 'major' or 'minor'
+    const keyType = keyDetails.type;
 
-    // Map Roman numerals (I-VII) to array indices (0-6).
-    const romanMap = { I: 0, II: 1, III: 2, IV: 3, V: 4, VI: 5, VII: 6 };
-    const baseRomanMatch = roman.match(/([iv]+)/i); // Extract I, II, V etc. (case-insensitive)
+    const romanMap: Record<string, number> = {
+      I: 0,
+      II: 1,
+      III: 2,
+      IV: 3,
+      V: 4,
+      VI: 5,
+      VII: 6,
+    };
+    const baseRomanMatch = roman.match(/([iv]+)/i);
     if (!baseRomanMatch) {
       console.warn(
         `Could not parse base Roman numeral from "${roman}" in key "${keyName}".`,
       );
       return [];
     }
-    const baseRomanUpper = baseRomanMatch[1].toUpperCase(); // e.g., "V" from "V7" or "v"
-    const scaleDegreeIndex = romanMap[baseRomanUpper as keyof typeof romanMap];
+    const baseRomanUpper = baseRomanMatch[1].toUpperCase();
+    const scaleDegreeIndex = romanMap[baseRomanUpper];
 
     if (scaleDegreeIndex === undefined) {
       console.warn(
-        `Could not map Roman numeral "${baseRomanUpper}" (from "${roman}") to a scale degree index.`,
+        `Could not map Roman numeral "${baseRomanUpper}" to scale degree index.`,
       );
       return [];
     }
 
-    // Get the diatonic chords directly from Tonal.Key for the specified key.
-    // Example: C major -> ["CM", "Dm", "Em", "FM", "GM", "Am", "B°"]
     const diatonicChords = keyDetails.chords;
     if (scaleDegreeIndex >= diatonicChords.length) {
       console.warn(
-        `Scale degree index ${scaleDegreeIndex} is out of bounds for diatonic chords in key "${keyName}". Chords: ${diatonicChords}`,
+        `Scale degree index ${scaleDegreeIndex} out of bounds for key "${keyName}".`,
       );
       return [];
     }
 
-    let chordSymbol = diatonicChords[scaleDegreeIndex]; // Base diatonic chord symbol (e.g., "GM", "Dm")
+    let chordSymbol = diatonicChords[scaleDegreeIndex];
 
-    // If the input Roman numeral includes a '7' (e.g., "V7"), attempt to use the 7th chord.
     if (roman.includes('7') && !chordSymbol.includes('7')) {
       const seventhChordSymbol = chordSymbol + '7';
-      // Check if Tonal recognizes this constructed 7th chord symbol.
       const chordInfo = Tonal.Chord.get(seventhChordSymbol);
       if (!chordInfo.empty) {
-        chordSymbol = seventhChordSymbol; // Use the valid 7th chord symbol.
+        chordSymbol = seventhChordSymbol;
       } else {
-        // Warn if the requested 7th is invalid, but proceed with the diatonic triad/chord.
         console.warn(
-          `Input "${roman}" requested a 7th, but "${seventhChordSymbol}" is not a valid Tonal chord symbol in key "${keyName}". Using diatonic chord "${chordSymbol}".`,
+          `Input "${roman}" requested 7th, but "${seventhChordSymbol}" invalid. Using "${chordSymbol}".`,
         );
       }
     }
-    // TODO: Could add similar logic for other chord extensions/qualities (e.g., dim, aug) if needed.
+    // TODO: Add more detailed parsing for dim, aug, other extensions if needed
 
-    // Get the detailed chord object from Tonal using the final determined symbol.
     const chord = Tonal.Chord.get(chordSymbol);
     if (!chord || chord.empty || !chord.notes || chord.notes.length === 0) {
       console.warn(
-        `Could not get valid notes for chord symbol "${chordSymbol}" (derived from Roman "${roman}" in key "${keyName}").`,
+        `Could not get notes for chord symbol "${chordSymbol}" (from "${roman}" in "${keyName}").`,
       );
       return [];
     }
 
-    // Determine a suitable root MIDI note, aiming for octave 3 or 4.
     if (!chord.tonic) {
-      console.warn(
-        `Chord symbol "${chordSymbol}" does not have a valid tonic.`,
-      );
+      console.warn(`Chord symbol "${chordSymbol}" has no valid tonic.`);
       return [];
     }
-    const rootNote = Tonal.Note.get(chord.tonic); // { letter, acc, oct } - oct might be undefined
-    // Estimate MIDI: If root is A or B, start octave 3; otherwise, start octave 4.
+    const rootNoteDetails = Tonal.Note.get(chord.tonic);
     const rootOctaveGuess =
-      rootNote.letter === 'A' || rootNote.letter === 'B' ? 3 : 4;
+      rootNoteDetails.letter === 'A' || rootNoteDetails.letter === 'B' ? 3 : 4;
     const rootMidiGuess = Tonal.Note.midi(
-      rootNote.letter + rootNote.acc + rootOctaveGuess,
+      rootNoteDetails.letter + rootNoteDetails.acc + rootOctaveGuess,
     );
 
     if (rootMidiGuess === null) {
-      console.warn(
-        `Could not determine a root MIDI value for chord "${chordSymbol}".`,
-      );
+      console.warn(`Could not determine root MIDI for chord "${chordSymbol}".`);
       return [];
     }
-    const rootNoteName = Tonal.Note.fromMidi(rootMidiGuess); // Get the note name for transposition
+    const rootNoteName = Tonal.Note.fromMidi(rootMidiGuess);
     if (!rootNoteName) {
-      console.warn(
-        `Could not get note name from root MIDI ${rootMidiGuess} for chord "${chordSymbol}".`,
-      );
+      console.warn(`Could not get note name from root MIDI ${rootMidiGuess}.`);
       return [];
     }
 
-    // Calculate all chord note MIDIs by transposing the root note by the chord's intervals.
     return chord.intervals
       .map((interval) => {
         try {
-          // Transpose the determined root note name (e.g., "G4") by the interval (e.g., "3M").
           const transposedNoteName = Tonal.transpose(rootNoteName, interval);
-          if (!transposedNoteName) {
-            console.warn(
-              `Tonal.transpose returned null for ${rootNoteName} + ${interval}`,
-            );
-            return null;
-          }
-          // Convert the resulting note name (e.g., "B4") back to MIDI.
+          if (!transposedNoteName) return null;
           return Tonal.Note.midi(transposedNoteName);
         } catch (transposeError) {
           console.error(
-            `Error during Tonal.transpose(${rootNoteName}, ${interval}):`,
+            `Error transposing ${rootNoteName} by ${interval}:`,
             transposeError,
           );
           return null;
         }
       })
-      .filter((midi) => midi !== null); // Remove any nulls resulting from errors.
+      .filter((midi): midi is number => midi !== null); // Type guard ensures number[] return
   } catch (error) {
     console.error(
-      `Unexpected error getting chord notes for Roman "${roman}" in key "${keyName}":`,
+      `Error getting chord notes for Roman "${roman}" in key "${keyName}":`,
       error,
     );
-    return []; // Return empty array on any unexpected error.
+    return [];
   }
 }
 
@@ -205,21 +190,21 @@ function getChordNotesFromRoman(roman: string, keyName: string): number[] {
  * @returns Array of MIDI notes spanning relevant octaves.
  */
 function getExtendedChordNotePool(baseChordNotes: number[]): number[] {
-  const pool: number[] = [];
-  if (!baseChordNotes || baseChordNotes.length === 0) return pool;
+  const pool: Set<number> = new Set();
+  if (!baseChordNotes || baseChordNotes.length === 0) return [];
 
   [-2, -1, 0, 1, 2].forEach((octaveOffset) => {
     baseChordNotes.forEach((midi) => {
       if (midi !== null) {
-        // Check if midi is valid
-        pool.push(midi + octaveOffset * 12);
+        const note = midi + octaveOffset * 12;
+        // Filter within reasonable piano range (A0 to C8)
+        if (note >= 21 && note <= 108) {
+          pool.add(note);
+        }
       }
     });
   });
-  // Ensure the pool is sorted and unique, filtering out unreasonable notes
-  return Array.from(new Set(pool))
-    .sort((a, b) => a - b)
-    .filter((n) => n >= 21 && n <= 108); // A0 to C8
+  return Array.from(pool).sort((a, b) => a - b);
 }
 
 /**
@@ -228,11 +213,11 @@ function getExtendedChordNotePool(baseChordNotes: number[]): number[] {
  * @returns Note name string or null if invalid.
  */
 function midiToNoteName(midi: number | null): string | null {
-  if (midi === null || midi < 0 || midi > 127) return null; // Basic validation
+  if (midi === null || midi < 0 || midi > 127) return null;
   try {
     return Tonal.Note.fromMidi(midi);
   } catch {
-    return null; // Tonal might throw for invalid MIDI
+    return null;
   }
 }
 
@@ -242,12 +227,11 @@ function midiToNoteName(midi: number | null): string | null {
  * @returns MusicXMLPitch object or null if invalid.
  */
 function midiToMusicXMLPitch(midi: number): MusicXMLPitch | null {
-  const noteName = midiToNoteName(midi); // Use validated conversion
+  const noteName = midiToNoteName(midi);
   if (!noteName) return null;
 
   try {
-    const noteDetails = Tonal.Note.get(noteName); // Gets {pc, acc, oct, chroma, midi, freq, letter}
-    // Check for essential properties
+    const noteDetails = Tonal.Note.get(noteName);
     if (
       !noteDetails.pc ||
       noteDetails.oct === undefined ||
@@ -255,32 +239,28 @@ function midiToMusicXMLPitch(midi: number): MusicXMLPitch | null {
       !noteDetails.letter
     ) {
       console.warn(
-        `Could not get complete details for note: ${noteName} (MIDI: ${midi})`,
+        `Could not get complete Tonal details for note: ${noteName} (MIDI: ${midi})`,
       );
       return null;
     }
 
-    const step = noteDetails.letter; // Should be C, D, E, F, G, A, B
-    const alter =
-      noteDetails.acc === '#'
-        ? 1
-        : noteDetails.acc === '##'
-          ? 2
-          : noteDetails.acc === 'b'
-            ? -1
-            : noteDetails.acc === 'bb'
-              ? -2
-              : 0; // Convert accidental symbol to number
+    const step = noteDetails.letter;
+    const alterMap: Record<string, number> = {
+      '##': 2,
+      '#': 1,
+      '': 0,
+      b: -1,
+      bb: -2,
+    };
+    const alterNum = alterMap[noteDetails.acc] ?? 0;
     const octave = noteDetails.oct;
 
-    // MusicXML 'alter': 0=natural, 1=sharp, -1=flat, 2=double sharp, -2=double flat
-    // Omit alter attribute if 0 (natural) or NaN
-    const musicXmlAlter = alter === 0 || isNaN(alter) ? undefined : alter;
+    const musicXmlAlter = alterNum === 0 ? undefined : alterNum;
 
     return { step, alter: musicXmlAlter, octave };
   } catch (error) {
     console.error(
-      `Error getting details for note "${noteName}" (MIDI: ${midi}):`,
+      `Error getting MusicXML details for note "${noteName}" (MIDI: ${midi}):`,
       error,
     );
     return null;
@@ -304,10 +284,9 @@ function getMusicXMLDurationType(beatValue: number): string {
       return 'eighth';
     case 16:
       return '16th';
-    // Add cases for 32nd, 64th if needed
     default:
       console.warn(
-        `Unsupported beat value ${beatValue} for duration type, defaulting to 'quarter'.`,
+        `Unsupported beat value ${beatValue}, defaulting to 'quarter'.`,
       );
       return 'quarter';
   }
@@ -326,36 +305,50 @@ function findClosestNote(
   smoothnessPref: number, // 0-10
   avoidLeapThreshold: number = Tonal.Interval.semitones('P5') ?? 7, // Default to Perfect 5th
 ): number | null {
-  // ... [Implementation unchanged from previous version] ...
   if (!allowedNotes || allowedNotes.length === 0) {
-    return previousNoteMidi ?? null;
+    // If no notes allowed, maybe return previous? Or null? Returning null is safer.
+    return null; // Changed from returning previousNoteMidi
   }
   if (allowedNotes.length === 1) {
     return allowedNotes[0];
   }
+
   let bestNote: number = allowedNotes[0];
   let minScore: number = Infinity;
+
   allowedNotes.forEach((note) => {
+    // Primary score: closeness to target
     let score = Math.abs(note - targetMidi);
+
+    // Modify score based on previous note and smoothness preference
     if (previousNoteMidi !== null) {
       const interval = Math.abs(note - previousNoteMidi);
-      const smoothnessWeight = smoothnessPref / 10.0;
+      const smoothnessWeight = smoothnessPref / 10.0; // Normalize 0-1
+
+      // Penalize leaps based on smoothness preference
       if (interval === 0) {
+        // Penalize staying same slightly less if smoothness is high
         score *= 0.1 * (1.1 - smoothnessWeight);
       } else if (interval <= 2) {
+        // Stepwise motion bonus, higher bonus if smoothness high
         score *= 0.5 * (1.1 - smoothnessWeight);
       } else if (interval <= avoidLeapThreshold) {
+        // Moderate leaps penalty (increases w/ smoothness)
         score *=
           1.0 + (interval / avoidLeapThreshold) * (smoothnessWeight * 0.5);
       } else {
+        // Larger leaps penalty (increases more w/ smoothness)
         score *= 1.5 + (interval / 12.0) * smoothnessWeight;
       }
     }
+
     if (score < minScore) {
       minScore = score;
       bestNote = note;
     }
   });
+
+  // Optional: Re-evaluate if the chosen best note creates a large leap, prefer stepwise if close
   if (
     previousNoteMidi !== null &&
     Math.abs(bestNote - previousNoteMidi) > avoidLeapThreshold
@@ -364,6 +357,7 @@ function findClosestNote(
       (n) => Math.abs(n - previousNoteMidi!) <= 2,
     );
     if (stepNotes.length > 0) {
+      // Find the best step note based on closeness to target
       let bestStepNote = stepNotes[0];
       let minStepTargetScore = Math.abs(bestStepNote - targetMidi);
       stepNotes.forEach((stepNote) => {
@@ -373,12 +367,16 @@ function findClosestNote(
           bestStepNote = stepNote;
         }
       });
-      const LEAP_PREFERENCE_FACTOR = 2.0;
+
+      // If the best stepwise note isn't drastically worse than the leaping note (target-wise), prefer it.
+      const LEAP_PREFERENCE_FACTOR = 1.5 + smoothnessPref / 10.0; // Higher smoothness makes leaps less preferable
       if (minStepTargetScore < minScore * LEAP_PREFERENCE_FACTOR) {
+        // console.log(`  Overriding leap (${midiToNoteName(bestNote)}) with step (${midiToNoteName(bestStepNote)}) due to smoothness.`); // Debug
         bestNote = bestStepNote;
       }
     }
   }
+
   return bestNote;
 }
 
@@ -389,20 +387,25 @@ function assignBassNote(
   previousBassMidi: number | null,
   smoothness: number,
 ): number | null {
-  // ... [Implementation unchanged from previous version] ...
   const [minRange, maxRange] = VOICE_RANGES.bass;
-  let allowedBassNotes = chordNotesPool.filter(
+  const allowedBassNotes = chordNotesPool.filter(
     (n) => n >= minRange && n <= maxRange,
   );
+
   if (allowedBassNotes.length === 0) {
-    console.warn(
-      'No valid bass notes found in range. Cannot assign bass note.',
-    );
+    console.warn('No valid bass notes found in range.');
+    // Try extending range slightly? Or return null. Returning null is safer.
     return null;
   }
+
+  // Prioritize root note if available in range
   const rootNotePc = chordRootMidi % 12;
   const rootOptions = allowedBassNotes.filter((n) => n % 12 === rootNotePc);
-  const targetMidi = previousBassMidi ?? chordRootMidi - 12;
+
+  // Target slightly below previous note or root - 1 octave if no previous
+  const targetMidi =
+    previousBassMidi !== null ? previousBassMidi - 1 : chordRootMidi - 12;
+
   if (rootOptions.length > 0) {
     return findClosestNote(
       targetMidi,
@@ -411,8 +414,9 @@ function assignBassNote(
       smoothness,
     );
   } else {
+    // If root not available, choose the best available note
     console.log(
-      `Root note (${Tonal.Note.pitchClass(Tonal.Note.fromMidi(chordRootMidi))}) not available in bass range. Choosing best alternative.`,
+      `Root note (${Tonal.Note.pitchClass(Tonal.Note.fromMidi(chordRootMidi) ?? '')}) not available in bass range. Choosing best alternative.`,
     );
     return findClosestNote(
       targetMidi,
@@ -429,20 +433,22 @@ function assignSopranoNote(
   previousSopranoMidi: number | null,
   smoothness: number,
 ): number | null {
-  // ... [Implementation unchanged from previous version] ...
   const [minRange, maxRange] = VOICE_RANGES.soprano;
-  let allowedSopranoNotes = fullChordNotePool.filter(
+  const allowedSopranoNotes = fullChordNotePool.filter(
     (n) => n >= minRange && n <= maxRange,
   );
+
   if (allowedSopranoNotes.length === 0) {
-    console.warn(
-      'No valid soprano notes found in range. Cannot assign soprano note.',
-    );
+    console.warn('No valid soprano notes found in range.');
     return null;
   }
-  const targetMidi = previousSopranoMidi
-    ? previousSopranoMidi + Math.floor(Math.random() * 3) + 1
-    : minRange + 7;
+
+  // Target slightly above previous note, or middle of range if no previous
+  const targetMidi =
+    previousSopranoMidi !== null
+      ? previousSopranoMidi + 1
+      : (minRange + maxRange) / 2;
+
   return findClosestNote(
     targetMidi,
     allowedSopranoNotes,
@@ -462,33 +468,32 @@ function assignInnerVoices(
   bassNoteMidi: number | null,
   smoothness: number,
 ): { tenorNoteMidi: number | null; altoNoteMidi: number | null } {
-  // ... [Implementation unchanged from previous version] ...
   if (sopranoNoteMidi === null || bassNoteMidi === null) {
     console.warn('Cannot assign inner voices without valid soprano and bass.');
     return { tenorNoteMidi: null, altoNoteMidi: null };
   }
+
   const [altoMin, altoMax] = VOICE_RANGES.alto;
   const [tenorMin, tenorMax] = VOICE_RANGES.tenor;
+
+  // --- Assign Alto First ---
   let allowedAltoNotes = fullChordNotePool.filter(
     (n) =>
       n >= altoMin &&
       n <= altoMax &&
-      n < sopranoNoteMidi &&
-      n > bassNoteMidi &&
-      sopranoNoteMidi - n <= VOICE_SPACING_LIMIT.soprano_alto,
+      n < sopranoNoteMidi && // Must be below Soprano
+      n > bassNoteMidi && // Must be above Bass
+      sopranoNoteMidi - n <= VOICE_SPACING_LIMIT.soprano_alto, // Check spacing with Soprano
   );
-  let allowedTenorNotes = fullChordNotePool.filter(
-    (n) =>
-      n >= tenorMin &&
-      n <= tenorMax &&
-      n < sopranoNoteMidi &&
-      n > bassNoteMidi &&
-      n - bassNoteMidi <= VOICE_SPACING_LIMIT.tenor_bass,
-  );
+
   let altoNoteMidi: number | null = null;
-  let altoTargetMidi = previousAltoMidi
-    ? previousAltoMidi + (Math.random() > 0.5 ? 1 : -1)
-    : (sopranoNoteMidi + bassNoteMidi) / 2;
+  // Target near previous, or midway between S/B
+  const altoTargetMidi =
+    previousAltoMidi !== null
+      ? previousAltoMidi
+      : (sopranoNoteMidi + bassNoteMidi) / 2;
+
+  // Prioritize the target pitch class if available
   const altoTargetPcOptions = allowedAltoNotes.filter(
     (n) => n % 12 === altoTargetNotePc,
   );
@@ -500,12 +505,15 @@ function assignInnerVoices(
       smoothness,
     );
   }
+
+  // If target PC didn't work or wasn't available, find the best overall option
   if (altoNoteMidi === null) {
     if (allowedAltoNotes.length === 0) {
       console.warn(
         'No valid notes for Alto in range/spacing. Cannot assign Alto.',
       );
-      return { tenorNoteMidi: null, altoNoteMidi: null };
+      // Could try relaxing constraints slightly or return null
+      // Returning null for now
     } else {
       altoNoteMidi = findClosestNote(
         altoTargetMidi,
@@ -515,18 +523,33 @@ function assignInnerVoices(
       );
     }
   }
+
+  // If still no Alto note found, we can't proceed reliably for Tenor
   if (altoNoteMidi === null) {
-    console.error('Failed to find any suitable note for Alto.');
+    console.error(
+      'Failed to find any suitable note for Alto after all checks.',
+    );
     return { tenorNoteMidi: null, altoNoteMidi: null };
   }
-  allowedTenorNotes = allowedTenorNotes.filter(
+
+  // --- Assign Tenor Second ---
+  let allowedTenorNotes = fullChordNotePool.filter(
     (n) =>
-      n < altoNoteMidi! && altoNoteMidi! - n <= VOICE_SPACING_LIMIT.alto_tenor,
+      n >= tenorMin &&
+      n <= tenorMax &&
+      n < altoNoteMidi! && // Must be below assigned Alto
+      n > bassNoteMidi && // Must be above Bass
+      altoNoteMidi! - n <= VOICE_SPACING_LIMIT.alto_tenor && // Check spacing with Alto
+      n - bassNoteMidi <= VOICE_SPACING_LIMIT.tenor_bass, // Check spacing with Bass
   );
+
   let tenorNoteMidi: number | null = null;
-  let tenorTargetMidi = previousTenorMidi
-    ? previousTenorMidi + (Math.random() > 0.5 ? 1 : -1)
-    : (altoNoteMidi + bassNoteMidi) / 2;
+  const tenorTargetMidi =
+    previousTenorMidi !== null
+      ? previousTenorMidi
+      : (altoNoteMidi + bassNoteMidi) / 2;
+
+  // Prioritize the target pitch class
   const tenorTargetPcOptions = allowedTenorNotes.filter(
     (n) => n % 12 === tenorTargetNotePc,
   );
@@ -538,11 +561,14 @@ function assignInnerVoices(
       smoothness,
     );
   }
+
+  // If target PC didn't work or wasn't available, find best overall
   if (tenorNoteMidi === null) {
     if (allowedTenorNotes.length === 0) {
       console.warn(
         'No valid notes for Tenor below Alto / within spacing. Cannot assign Tenor.',
       );
+      // Return the valid Alto, but null Tenor
       return { tenorNoteMidi: null, altoNoteMidi: altoNoteMidi };
     } else {
       tenorNoteMidi = findClosestNote(
@@ -553,14 +579,21 @@ function assignInnerVoices(
       );
     }
   }
+
+  // Final check if Tenor assignment failed
   if (tenorNoteMidi === null) {
-    console.error('Failed to find any suitable note for Tenor.');
-    return { tenorNoteMidi: null, altoNoteMidi: altoNoteMidi };
+    console.error(
+      'Failed to find any suitable note for Tenor after all checks.',
+    );
+    return { tenorNoteMidi: null, altoNoteMidi: altoNoteMidi }; // Return valid Alto
   }
+
+  // Sanity check: Tenor should not be >= Alto (should be prevented by filter, but check anyway)
   if (tenorNoteMidi >= altoNoteMidi) {
     console.warn(
-      `INTERNAL ERROR: Tenor (${midiToNoteName(tenorNoteMidi)}) >= Alto (${midiToNoteName(altoNoteMidi)}). Attempting fallback correction.`,
+      `INTERNAL ERROR: Tenor (${midiToNoteName(tenorNoteMidi)}) >= Alto (${midiToNoteName(altoNoteMidi)}). Attempting fallback.`,
     );
+    // Try forcing selection from notes strictly below Alto again
     const lowerTenorOptions = allowedTenorNotes.filter(
       (n) => n < altoNoteMidi!,
     );
@@ -571,18 +604,16 @@ function assignInnerVoices(
         previousTenorMidi,
         smoothness,
       );
-      if (tenorNoteMidi === null) tenorNoteMidi = lowerTenorOptions[0];
+      if (tenorNoteMidi === null) tenorNoteMidi = lowerTenorOptions[0]; // Just pick one if findClosest fails
     } else {
-      tenorNoteMidi = Math.max(tenorMin, bassNoteMidi + 1, altoNoteMidi - 1);
-      console.warn(
-        `Forcing Tenor to fallback MIDI ${tenorNoteMidi} (${midiToNoteName(tenorNoteMidi)}).`,
+      // No options left, this indicates a significant problem earlier
+      console.error(
+        'Fallback correction for Tenor failed - no notes below Alto available.',
       );
-    }
-    if (tenorNoteMidi === null) {
-      console.error('Fallback correction for Tenor failed.');
-      return { tenorNoteMidi: null, altoNoteMidi: altoNoteMidi };
+      tenorNoteMidi = null; // Set tenor to null as it's invalid
     }
   }
+
   return { tenorNoteMidi, altoNoteMidi };
 }
 
@@ -595,53 +626,57 @@ function checkParallels(
   part1Name: string,
   part2Name: string,
   measureIndex: number,
-  beatIndex: number, // 0-based beat index within measure
+  beatIndex: number, // 0-based beat index
 ): void {
-  // ... [Implementation unchanged from previous version] ...
   if (
     voice1Prev === null ||
-    voice2Prev === null ||
     voice1Curr === null ||
+    voice2Prev === null ||
     voice2Curr === null
   )
     return;
+
+  // Only check if both voices moved
   const voice1Moved = voice1Prev !== voice1Curr;
   const voice2Moved = voice2Prev !== voice2Curr;
   if (!voice1Moved || !voice2Moved) return;
+
+  // Get note names for interval calculation
   const note1PrevName = midiToNoteName(voice1Prev);
   const note1CurrName = midiToNoteName(voice1Curr);
   const note2PrevName = midiToNoteName(voice2Prev);
   const note2CurrName = midiToNoteName(voice2Curr);
   if (!note1PrevName || !note1CurrName || !note2PrevName || !note2CurrName)
-    return;
+    return; // Skip if conversion failed
+
   try {
-    const intervalPrev = Tonal.Interval.distance(note2PrevName, note1PrevName);
+    const intervalPrev = Tonal.Interval.distance(note2PrevName, note1PrevName); // Use distance for directed interval
     const intervalCurr = Tonal.Interval.distance(note2CurrName, note1CurrName);
+
+    // Simplify to check basic interval type (octave, fifth)
     const simplePrev = Tonal.Interval.simplify(intervalPrev);
     const simpleCurr = Tonal.Interval.simplify(intervalCurr);
-    const numPrev = Tonal.Interval.num(simplePrev);
-    const numCurr = Tonal.Interval.num(simpleCurr);
-    const loc = `M${measureIndex + 1}:B${beatIndex + 1}`;
+
+    // Check for Perfect 5ths (P5)
     if (
-      numPrev === 5 &&
-      numCurr === 5 &&
-      simplePrev === 'P5' &&
-      simpleCurr === 'P5'
+      (simplePrev === 'P5' || simplePrev === 'P-5') &&
+      (simpleCurr === 'P5' || simpleCurr === 'P-5')
     ) {
       console.warn(
-        `PARALLEL 5th (${part1Name}/${part2Name}) at ${loc}. Prev: ${note1PrevName}-${note2PrevName}, Curr: ${note1CurrName}-${note2CurrName}`,
+        `PARALLEL 5th (${part1Name}/${part2Name}) at M${measureIndex + 1}:B${beatIndex + 1}. Prev: ${note1PrevName}-${note2PrevName}, Curr: ${note1CurrName}-${note2CurrName}`,
       );
-    } else if (
-      (numPrev === 8 || numPrev === 1) &&
-      (numCurr === 8 || numCurr === 1) &&
-      simplePrev?.startsWith('P') &&
-      simpleCurr?.startsWith('P')
+    }
+    // Check for Perfect Octaves/Unisons (P1, P8)
+    else if (
+      (simplePrev === 'P1' || simplePrev === 'P8' || simplePrev === 'P-8') &&
+      (simpleCurr === 'P1' || simpleCurr === 'P8' || simpleCurr === 'P-8')
     ) {
       console.warn(
-        `PARALLEL Octave/Unison (${part1Name}/${part2Name}) at ${loc}. Prev: ${note1PrevName}-${note2PrevName}, Curr: ${note1CurrName}-${note2CurrName}`,
+        `PARALLEL Octave/Unison (${part1Name}/${part2Name}) at M${measureIndex + 1}:B${beatIndex + 1}. Prev: ${note1PrevName}-${note2PrevName}, Curr: ${note1CurrName}-${note2CurrName}`,
       );
     }
   } catch (error) {
+    // Tonal might throw errors on unusual intervals or edge cases
     console.error(
       `Error checking parallels at M${measureIndex + 1}:B${beatIndex + 1} between ${part1Name}/${part2Name}:`,
       error,
@@ -654,15 +689,19 @@ function checkVoiceLeadingRules(
   currentNotes: PreviousNotes,
   previousNotes: PreviousNotes,
   measureIndex: number,
-  beatIndex: number,
+  beatIndex: number, // 0-based beat index within measure
 ): void {
-  // ... [Implementation unchanged from previous version] ...
   const { soprano, alto, tenor, bass } = currentNotes;
   const prev = previousNotes;
   const loc = `M${measureIndex + 1}:B${beatIndex + 1}`;
+
+  // Basic checks require all notes to be present
   if (soprano === null || alto === null || tenor === null || bass === null) {
+    // console.log(`Skipping full rule check at ${loc} due to missing notes.`); // Optional debug
     return;
   }
+
+  // Voice Crossing
   if (alto > soprano)
     console.warn(
       `Voice Crossing: Alto (${midiToNoteName(alto)}) > Soprano (${midiToNoteName(soprano)}) at ${loc}`,
@@ -675,12 +714,16 @@ function checkVoiceLeadingRules(
     console.warn(
       `Voice Crossing: Bass (${midiToNoteName(bass)}) > Tenor (${midiToNoteName(tenor)}) at ${loc}`,
     );
+
+  // Voice Spacing (Absolute difference in MIDI)
   if (Math.abs(soprano - alto) > VOICE_SPACING_LIMIT.soprano_alto)
     console.warn(`Spacing > P8 between Soprano/Alto at ${loc}`);
   if (Math.abs(alto - tenor) > VOICE_SPACING_LIMIT.alto_tenor)
     console.warn(`Spacing > P8 between Alto/Tenor at ${loc}`);
   if (Math.abs(tenor - bass) > VOICE_SPACING_LIMIT.tenor_bass)
     console.warn(`Spacing > P12 between Tenor/Bass at ${loc}`);
+
+  // Parallel Motion Checks (Requires previous notes)
   if (
     prev &&
     prev.soprano !== null &&
@@ -688,6 +731,7 @@ function checkVoiceLeadingRules(
     prev.tenor !== null &&
     prev.bass !== null
   ) {
+    // Check all pairs
     checkParallels(
       prev.soprano,
       soprano,
@@ -765,65 +809,90 @@ export function generateChordProgression(
   numMeasures: number,
   harmonicComplexity: number, // 0-10
 ): string[] {
-  // ... [Implementation unchanged from previous version] ...
   if (numMeasures <= 0) return [];
-  const keyDetails = Tonal.Key.majorKey(key) || Tonal.Key.minorKey(key);
+
+  let currentKey = key;
+  const keyDetails =
+    Tonal.Key.majorKey(currentKey) || Tonal.Key.minorKey(currentKey);
   if (!keyDetails) {
-    console.error(
-      `Invalid key provided: "${key}". Using "C" major as fallback.`,
-    );
-    key = 'C';
-    return generateChordProgression(key, numMeasures, harmonicComplexity);
+    console.error(`Invalid key "${key}". Defaulting to "C".`);
+    currentKey = 'C';
+    return generateChordProgression(
+      currentKey,
+      numMeasures,
+      harmonicComplexity,
+    ); // Recurse with default
   }
+
   const isMajor = keyDetails.type === 'major';
   const tonicRoman = isMajor ? 'I' : 'i';
   const dominantRoman = 'V';
-  const dominant7Roman = 'V7';
+  const dominant7Roman = 'V7'; // Always major V7 for standard cadences
   const subdominantRoman = isMajor ? 'IV' : 'iv';
-  const supertonicRoman = isMajor ? 'ii' : 'ii°';
-  const mediantRoman = isMajor ? 'iii' : 'III';
-  const submediantRoman = isMajor ? 'vi' : 'VI';
-  const leadingToneRoman = 'vii°';
+  const supertonicRoman = isMajor ? 'ii' : 'ii°'; // ii in major, ii° in minor
+  const mediantRoman = isMajor ? 'iii' : 'III'; // iii in major, III in minor
+  const submediantRoman = isMajor ? 'vi' : 'VI'; // vi in major, VI in minor
+  const leadingToneRoman = 'vii°'; // Fully diminished in both major and minor typically
+
+  // Define chord pools based on complexity
   const primaryChords = [tonicRoman, subdominantRoman, dominantRoman];
   const secondaryChords = [submediantRoman, supertonicRoman];
-  const complexChords = [mediantRoman, leadingToneRoman];
+  const complexChords = [mediantRoman, leadingToneRoman]; // III/iii can be complex
+
   let allowedChords = [...primaryChords];
   if (harmonicComplexity >= 3) allowedChords.push(...secondaryChords);
   if (harmonicComplexity >= 7) allowedChords.push(...complexChords);
+
+  // Add V7 based on complexity
   if (harmonicComplexity >= 5) {
     if (allowedChords.includes(dominantRoman)) {
+      // Replace V with V7 if V exists
       allowedChords = allowedChords.map((c) =>
         c === dominantRoman ? dominant7Roman : c,
       );
     } else if (!allowedChords.includes(dominant7Roman)) {
+      // Add V7 if V wasn't included initially
       allowedChords.push(dominant7Roman);
     }
   }
-  const uniqueChords = new Set<string>(allowedChords);
-  allowedChords = [];
-  uniqueChords.forEach((chord) => {
-    allowedChords.push(chord);
-  });
-  let progression: string[] = [tonicRoman];
+
+  // Ensure unique chords
+  allowedChords = Array.from(new Set(allowedChords));
+  if (allowedChords.length === 0) {
+    console.error('No allowed chords generated. Defaulting to tonic.');
+    allowedChords = [tonicRoman];
+  }
+
+  let progression: string[] = [tonicRoman]; // Start on tonic
   let prevChord = tonicRoman;
-  const MAX_ATTEMPTS = 5;
+  const MAX_ATTEMPTS = 5; // Prevent infinite loops if choices are limited
+
   for (let i = 1; i < numMeasures - 1; i++) {
+    // Generate intermediate chords
     let nextChord: string | undefined = undefined;
     let attempts = 0;
+
     do {
       let candidates = [...allowedChords];
+
+      // Basic Tonal Motion Rules (can be expanded)
       if ([subdominantRoman, supertonicRoman].includes(prevChord)) {
+        // Pre-dominant -> Dominant tendency
         const dominantCandidates = candidates.filter((c) =>
           [dominantRoman, dominant7Roman, leadingToneRoman].includes(c),
         );
         if (dominantCandidates.length > 0) candidates = dominantCandidates;
-      } else if ([dominantRoman, dominant7Roman].includes(prevChord)) {
+      } else if (
+        [dominantRoman, dominant7Roman, leadingToneRoman].includes(prevChord)
+      ) {
+        // Dominant -> Tonic tendency
         const tonicResolutionCandidates = candidates.filter((c) =>
           [tonicRoman, submediantRoman].includes(c),
-        );
+        ); // Allow deceptive cadence vi/VI
         if (tonicResolutionCandidates.length > 0)
           candidates = tonicResolutionCandidates;
       } else if (prevChord === submediantRoman) {
+        // Submediant often moves to pre-dominant or dominant
         const submediantNextCandidates = candidates.filter((c) =>
           [
             supertonicRoman,
@@ -835,40 +904,52 @@ export function generateChordProgression(
         if (submediantNextCandidates.length > 0)
           candidates = submediantNextCandidates;
       }
-      if (candidates.length === 0) candidates = allowedChords;
-      nextChord = candidates[Math.floor(Math.random() * candidates.length)];
+      // Add more rules (e.g., avoid iii-IV, root movements) if desired
+
+      if (candidates.length === 0) candidates = allowedChords; // Fallback if rules are too strict
+
+      // Select random candidate, avoid repeating previous chord if possible
+      const potentialNext =
+        candidates[Math.floor(Math.random() * candidates.length)];
+      if (potentialNext !== prevChord || allowedChords.length === 1) {
+        nextChord = potentialNext;
+      }
       attempts++;
-    } while (
-      nextChord === prevChord &&
-      allowedChords.length > 1 &&
-      attempts < MAX_ATTEMPTS
-    );
+    } while (nextChord === undefined && attempts < MAX_ATTEMPTS);
+
+    // If still no chord found (e.g., only one allowed chord), use it or fallback
     if (nextChord === undefined) {
-      nextChord = allowedChords[0] ?? tonicRoman;
+      nextChord =
+        allowedChords.find((c) => c !== prevChord) ?? allowedChords[0]; // Try not to repeat, else just pick first
       console.warn(
         `Could not find distinct next chord from ${prevChord}, using ${nextChord}`,
       );
     }
+
     progression.push(nextChord);
     prevChord = nextChord;
   }
+
+  // --- Cadence ---
   if (numMeasures > 1) {
+    // Standard Authentic Cadence: V(7)-I or V(7)-i
     const preCadenceChord = allowedChords.includes(dominant7Roman)
       ? dominant7Roman
       : allowedChords.includes(dominantRoman)
         ? dominantRoman
-        : tonicRoman;
+        : tonicRoman; // Prefer V7, then V, else I/i
     if (numMeasures === 2) {
-      progression[1] = tonicRoman;
+      progression[1] = tonicRoman; // Simple I-I or i-i for 2 measures if V not available
     } else {
-      progression[numMeasures - 2] = preCadenceChord;
-      progression[numMeasures - 1] = tonicRoman;
+      progression[numMeasures - 2] = preCadenceChord; // Penultimate chord
+      progression[numMeasures - 1] = tonicRoman; // Final chord is tonic
     }
   } else if (numMeasures === 1) {
-    progression[0] = tonicRoman;
+    progression[0] = tonicRoman; // Single measure is just tonic
   }
+
   console.log(
-    `Generated Progression (${key}, complexity ${harmonicComplexity}):`,
+    `Generated Progression (${currentKey}, complexity ${harmonicComplexity}):`,
     progression.join(' - '),
   );
   return progression;
@@ -876,7 +957,8 @@ export function generateChordProgression(
 
 /**
  * Generates the four-part voice data as a MusicXML string using xmlbuilder2,
- * formatted for a single Grand Staff (two staves).
+ * formatted for a single Grand Staff (Treble + Bass clefs) with shared stems
+ * for simultaneous notes on each staff.
  * @param chordProgression - Array of Roman numeral chord symbols.
  * @param keySignature - The key signature (e.g., "C", "Gm").
  * @param meter - The time signature (e.g., "4/4").
@@ -894,10 +976,10 @@ export function generateVoices(
 ): string {
   const { melodicSmoothness, dissonanceStrictness } = generationSettings;
 
+  // --- Key, Meter Validation ---
   const keyDetails =
     Tonal.Key.majorKey(keySignature) || Tonal.Key.minorKey(keySignature);
-  if (!keyDetails)
-    throw new Error('Invalid key signature provided: ' + keySignature);
+  if (!keyDetails) throw new Error('Invalid key signature: ' + keySignature);
   const keyTonic = keyDetails.tonic;
   const keyMode = keyDetails.type === 'major' ? 'major' : 'minor';
   const keyFifths = keyDetails.alteration ?? 0;
@@ -911,12 +993,10 @@ export function generateVoices(
   const meterBeats = parseInt(beatsStr, 10);
   const beatValue = parseInt(beatValueStr, 10);
   if (![1, 2, 4, 8, 16].includes(beatValue))
-    throw new Error(
-      'Unsupported beat value (denominator) in meter: ' + beatValue,
-    );
-  if (meterBeats <= 0) throw new Error('Meter must have at least one beat.');
+    throw new Error('Unsupported beat value: ' + beatValue);
+  if (meterBeats <= 0) throw new Error('Meter beats must be positive.');
 
-  // --- MusicXML Setup ---
+  // --- MusicXML Document Setup ---
   const root = create({ version: '1.0', encoding: 'UTF-8' })
     .dtd({
       pubID: '-//Recordare//DTD MusicXML 4.0 Partwise//EN',
@@ -927,7 +1007,7 @@ export function generateVoices(
   root
     .ele('work')
     .ele('work-title')
-    .txt('Generated Chorale (Grand Staff)')
+    .txt('Generated Chorale (Grand Staff, Shared Stems)')
     .up()
     .up();
   const identification = root.ele('identification');
@@ -938,95 +1018,106 @@ export function generateVoices(
     .up()
     .ele('encoding-date')
     .txt(new Date().toISOString().split('T')[0])
-    .up()
+    .up() // Use current date
     .up();
   identification.up();
 
-  // --- Define ONE Part for the Grand Staff ---
+  // --- Part List (Single Part for Grand Staff) ---
   const partList = root.ele('part-list');
   partList
     .ele('score-part', { id: 'P1' })
     .ele('part-name')
-    .txt('Choral') // Or "Piano", "Keyboard", etc.
-    .up()
-    // Optional: Add part-abbreviation if needed
-    .ele('score-instrument', { id: 'P1-I1' }) // Associate an instrument
+    .txt('Choral')
+    .up() // Or Piano, Keyboard etc.
+    .ele('score-instrument', { id: 'P1-I1' })
     .ele('instrument-name')
     .txt('Keyboard')
-    .up() // Example instrument
     .up()
+    .up() // Optional instrument association
     .up();
   partList.up();
 
-  // --- Create the ONE Part Element ---
+  // --- Part Element ---
   const partBuilder = root.ele('part', { id: 'P1' });
 
+  // --- Voicing State & XML Parameters ---
   let previousMeasureLastNotes: PreviousNotes = {
     soprano: null,
     alto: null,
     tenor: null,
     bass: null,
   };
-  const divisions = 4; // Divisions per quarter note (adjust if needed for finer rhythms)
+  const divisions = 4; // Standard divisions per quarter note
   const beatDurationTicks = divisions * (4 / beatValue); // Duration of one beat in XML divisions
   const musicXmlBeatType = getMusicXMLDurationType(beatValue); // e.g., "quarter"
-
   const leadingToneMidiPc =
     Tonal.Note.midi(keyTonic + DEFAULT_OCTAVE) !== null
       ? (Tonal.Note.midi(keyTonic + DEFAULT_OCTAVE)! +
           (Tonal.Interval.semitones('M7') ?? 11)) %
         12
-      : -1;
-
-  // Map voices to their grand staff properties
-  const voiceGrandStaffMapping: Record<
-    VoiceName,
-    { staff: number; voice: number; stem: 'up' | 'down' }
-  > = {
-    soprano: { staff: 1, voice: 1, stem: 'up' },
-    alto: { staff: 1, voice: 2, stem: 'down' },
-    tenor: { staff: 2, voice: 1, stem: 'up' },
-    bass: { staff: 2, voice: 2, stem: 'down' },
-  };
+      : -1; // Calculate leading tone PC once
 
   // --- Generate Measures ---
   for (let measureIndex = 0; measureIndex < numMeasures; measureIndex++) {
-    console.log(
-      `--- Generating Measure ${measureIndex + 1} (Shared Stems) ---`,
-    );
     const roman = chordProgression[measureIndex];
+    console.log(`--- Measure ${measureIndex + 1}: Chord ${roman} ---`); // Log progress
     const baseChordNotes = getChordNotesFromRoman(roman, keySignature);
 
     const measureBuilder = partBuilder.ele('measure', {
       number: `${measureIndex + 1}`,
     });
 
-    // Add Attributes (Key, Time, Clefs, Staves) in First Measure (Same as previous Grand Staff version)
+    // --- Add Attributes in First Measure ---
     if (measureIndex === 0) {
       const attributes = measureBuilder.ele('attributes');
       attributes.ele('divisions').txt(`${divisions}`).up();
       attributes
-        .ele('key') /*...*/
+        .ele('key')
+        .ele('fifths')
+        .txt(`${keyFifths}`)
+        .up()
+        .ele('mode')
+        .txt(keyMode)
+        .up()
         .up();
       attributes
-        .ele('time') /*...*/
+        .ele('time')
+        .ele('beats')
+        .txt(`${meterBeats}`)
+        .up()
+        .ele('beat-type')
+        .txt(`${beatValue}`)
+        .up()
         .up();
-      attributes.ele('staves').txt('2').up();
+      attributes.ele('staves').txt('2').up(); // Define two staves
+      // Clef for Staff 1 (Treble)
       attributes
-        .ele('clef', { number: '1' }) /* Treble */
+        .ele('clef', { number: '1' })
+        .ele('sign')
+        .txt('G')
+        .up()
+        .ele('line')
+        .txt('2')
+        .up()
         .up();
+      // Clef for Staff 2 (Bass)
       attributes
-        .ele('clef', { number: '2' }) /* Bass */
+        .ele('clef', { number: '2' })
+        .ele('sign')
+        .txt('F')
+        .up()
+        .ele('line')
+        .txt('4')
+        .up()
         .up();
-      attributes.up();
+      attributes.up(); // Close attributes
     }
 
-    // --- Handle Chord Errors (Add Rests - Adjusted for shared stem logic) ---
+    // --- Handle Chord Errors (Add Rests) ---
     if (baseChordNotes.length === 0) {
       console.error(
-        `Skipping measure ${measureIndex + 1}: Chord error "${roman}". Adding rests.`,
+        `Skipping measure ${measureIndex + 1}: Chord error "${roman}" in ${keySignature}. Adding rests.`,
       );
-      // Add rests for each beat to *both* staves using the designated voices
       for (let beat = 0; beat < meterBeats; beat++) {
         // Staff 1 Rest (Voice 1)
         measureBuilder
@@ -1038,7 +1129,7 @@ export function generateVoices(
           .up()
           .ele('voice')
           .txt('1')
-          .up() // Voice 1 for upper staff chords/rests
+          .up()
           .ele('staff')
           .txt('1')
           .up()
@@ -1053,7 +1144,7 @@ export function generateVoices(
           .up()
           .ele('voice')
           .txt('2')
-          .up() // Voice 2 for lower staff chords/rests
+          .up()
           .ele('staff')
           .txt('2')
           .up()
@@ -1065,50 +1156,50 @@ export function generateVoices(
         tenor: null,
         bass: null,
       };
-      measureBuilder.up(); // Close measure
-      continue; // Move to the next measure
+      measureBuilder.up();
+      continue;
     }
 
+    // --- Calculate Voicing ---
     const chordRootMidi = baseChordNotes[0];
-    const chordRootPc = chordRootMidi % 12;
     const chordPcs = baseChordNotes.map((n) => n % 12);
     const fullChordNotePool = getExtendedChordNotePool(baseChordNotes);
 
+    // Assign outer voices first
+    const sopranoNoteMidi = assignSopranoNote(
+      fullChordNotePool,
+      previousMeasureLastNotes.soprano,
+      melodicSmoothness,
+    );
     const bassNoteMidi = assignBassNote(
       chordRootMidi,
       fullChordNotePool,
       previousMeasureLastNotes.bass,
       melodicSmoothness,
     );
-    const sopranoNoteMidi = assignSopranoNote(
-      fullChordNotePool,
-      previousMeasureLastNotes.soprano,
-      melodicSmoothness,
-    );
 
-    // Determine needed PCs and doubling (logic remains the same)
+    // Determine needed pitch classes and doubling for inner voices
     let currentVoicingPcs = new Set<number>();
     if (bassNoteMidi !== null) currentVoicingPcs.add(bassNoteMidi % 12);
     if (sopranoNoteMidi !== null) currentVoicingPcs.add(sopranoNoteMidi % 12);
     let neededPcs = chordPcs.filter((pc) => !currentVoicingPcs.has(pc));
     let pcsToDouble: number[] = [];
     const voicesToFill = 2; // Alto and Tenor
-    // ... (rest of the doubling logic remains identical to the original) ...
+
     if (neededPcs.length < voicesToFill) {
       const numDoublingsNeeded = voicesToFill - neededPcs.length;
-      const canDoubleRoot = chordRootPc !== leadingToneMidiPc;
-      // Prefer doubling root if allowed and needed
+      const canDoubleRoot = chordRootMidi % 12 !== leadingToneMidiPc;
+      // Prioritize doubling root
       if (
         canDoubleRoot &&
         pcsToDouble.length < numDoublingsNeeded &&
-        !neededPcs.includes(chordRootPc)
+        !neededPcs.includes(chordRootMidi % 12)
       ) {
-        // Don't double if it's already needed for completeness
-        pcsToDouble.push(chordRootPc);
+        pcsToDouble.push(chordRootMidi % 12);
       }
-      // Prefer doubling fifth if allowed and needed
+      // Then fifth (if not leading tone)
       const fifthMidi = Tonal.Note.midi(
-        Tonal.Note.transpose(Tonal.Note.fromMidi(chordRootMidi), 'P5'),
+        Tonal.Note.transpose(Tonal.Note.fromMidi(chordRootMidi) ?? '', 'P5'),
       );
       const fifthPc = fifthMidi !== null ? fifthMidi % 12 : -1;
       if (
@@ -1116,78 +1207,56 @@ export function generateVoices(
         fifthPc !== -1 &&
         chordPcs.includes(fifthPc) &&
         fifthPc !== leadingToneMidiPc &&
-        !neededPcs.includes(fifthPc) && // Don't double if needed
+        !neededPcs.includes(fifthPc) &&
         !pcsToDouble.includes(fifthPc)
       ) {
-        // Don't double twice yet
         pcsToDouble.push(fifthPc);
       }
-      // Prefer doubling third if allowed and needed (less common, but possible)
+      // Then third (if not leading tone)
       const thirdPc = chordPcs.find(
-        (pc) => pc !== chordRootPc && pc !== fifthPc,
+        (pc) => pc !== chordRootMidi % 12 && pc !== fifthPc,
       );
       if (
         pcsToDouble.length < numDoublingsNeeded &&
         thirdPc !== undefined &&
         thirdPc !== leadingToneMidiPc &&
-        !neededPcs.includes(thirdPc) && // Don't double if needed
+        !neededPcs.includes(thirdPc) &&
         !pcsToDouble.includes(thirdPc)
       ) {
-        // Don't double twice yet
         pcsToDouble.push(thirdPc);
       }
-      // Fallback doubling if still needed (prioritize root, then fifth, then third)
+      // Fallback doubling (usually root again)
       while (pcsToDouble.length < numDoublingsNeeded) {
-        if (canDoubleRoot && !pcsToDouble.includes(chordRootPc))
-          pcsToDouble.push(chordRootPc); // Allow multiple root doublings
+        if (canDoubleRoot) pcsToDouble.push(chordRootMidi % 12);
         else if (
           fifthPc !== -1 &&
           chordPcs.includes(fifthPc) &&
-          fifthPc !== leadingToneMidiPc &&
-          !pcsToDouble.includes(fifthPc)
+          fifthPc !== leadingToneMidiPc
         )
-          // Only add 5th once if possible via this fallback
-          pcsToDouble.push(fifthPc);
-        else if (
-          thirdPc !== undefined &&
-          thirdPc !== leadingToneMidiPc &&
-          !pcsToDouble.includes(thirdPc) // Only add 3rd once via fallback
-        )
-          pcsToDouble.push(thirdPc);
-        else if (canDoubleRoot)
-          pcsToDouble.push(chordRootPc); // Force root if absolutely stuck
+          pcsToDouble.push(fifthPc); // Allow multiple 5th doublings if root is LT
         else {
-          // Emergency fallback: double anything not the leading tone
+          // Emergency: double anything available that isn't LT
           const fallbackPc =
-            chordPcs.find((pc) => pc !== leadingToneMidiPc) ?? chordRootPc;
+            chordPcs.find((pc) => pc !== leadingToneMidiPc) ??
+            chordRootMidi % 12;
           pcsToDouble.push(fallbackPc);
         }
-        // Safety break to prevent infinite loops on unusual chords
-        if (pcsToDouble.length > voicesToFill * 2) {
-          console.warn(
-            `Measure ${measureIndex + 1}: Doubling fallback exceeded limit. Voicing might be incomplete.`,
-          );
-          break;
-        }
+        if (pcsToDouble.length > 10) break; // Safety break
       }
     }
 
     let targetInnerPcs = [...neededPcs, ...pcsToDouble].slice(0, voicesToFill);
-    // Ensure we have exactly two target PCs for Alto and Tenor
     while (targetInnerPcs.length < voicesToFill) {
+      // Ensure exactly two targets
       const fallbackPc =
-        chordPcs.find((pc) => pc !== leadingToneMidiPc) ?? chordRootPc;
+        chordPcs.find((pc) => pc !== leadingToneMidiPc) ?? chordRootMidi % 12;
       targetInnerPcs.push(fallbackPc);
-      console.warn(
-        `Measure ${measureIndex + 1}: Had to add fallback PC for inner voice target.`,
-      );
     }
-
-    // Assign targets (can swap if needed, e.g., based on previous notes)
-    // Simple assignment: first needed/doubled for Tenor, second for Alto
+    // Simple assignment: let assignInnerVoices handle placement based on previous notes and range
     const tenorTargetPc = targetInnerPcs[0];
     const altoTargetPc = targetInnerPcs[1];
 
+    // Assign inner voices
     const { tenorNoteMidi, altoNoteMidi } = assignInnerVoices(
       tenorTargetPc,
       altoTargetPc,
@@ -1205,100 +1274,89 @@ export function generateVoices(
       tenor: tenorNoteMidi,
       bass: bassNoteMidi,
     };
-    console.log(` M${measureIndex + 1} Voicing (MIDI):`, currentMeasureVoicing);
+    console.log(
+      `   Voicing MIDI: S=${sopranoNoteMidi} A=${altoNoteMidi} T=${tenorNoteMidi} B=${bassNoteMidi}`,
+    );
 
-    // --- Check Voice Leading Rules (Same Logic) ---
+    // Check Voice Leading Rules
     if (dissonanceStrictness > 3) {
       checkVoiceLeadingRules(
         currentMeasureVoicing,
         previousMeasureLastNotes,
         measureIndex,
-        0, // Check applies to the start of the measure's chord
-      );
+        0,
+      ); // Check at start of measure
     }
 
+    // --- Add Notes/Rests to Measure using Shared Stem Logic ---
     for (let beat = 0; beat < meterBeats; beat++) {
       const sopMidi = currentMeasureVoicing.soprano;
       const altMidi = currentMeasureVoicing.alto;
       const tenMidi = currentMeasureVoicing.tenor;
       const basMidi = currentMeasureVoicing.bass;
 
-      let staff1HasNote = false; // Track if the primary note for the chord was added
+      let staff1HasNote = false; // Track if the first note of the chord is added
       let staff2HasNote = false;
 
       // --- Staff 1: Soprano (Primary) & Alto (Chord) ---
       const staff1Voice = '1';
       const staff1Staff = '1';
-      // Simple stem rule: up unless Soprano is B4 or higher (can be refined)
-      let staff1Stem = sopMidi !== null && sopMidi >= 71 ? 'down' : 'up';
-      // If only Alto exists, its pitch determines the stem
+      let staff1Stem = sopMidi !== null && sopMidi >= 71 ? 'down' : 'up'; // Default up, down if S is high
       if (sopMidi === null && altMidi !== null) {
         staff1Stem = altMidi >= 71 ? 'down' : 'up';
-      }
+      } // Stem based on A if S absent
 
+      // Add Soprano Note (if exists)
       if (sopMidi !== null) {
         const pitch = midiToMusicXMLPitch(sopMidi);
         if (pitch) {
           const note = measureBuilder.ele('note');
-          // Add harmony symbol above the first note of the chord?
-          if (beat === 0) {
-            note
-              .ele('harmony') /* ... */
-              .up();
-          }
           const pitchEl = note.ele('pitch');
           pitchEl.ele('step').txt(pitch.step).up();
-          if (pitch.alter !== undefined && pitch.alter !== 0) {
+          if (pitch.alter !== undefined)
             pitchEl.ele('alter').txt(`${pitch.alter}`).up();
-          }
           pitchEl.ele('octave').txt(`${pitch.octave}`).up();
-          pitchEl.up(); // Close pitch
+          pitchEl.up(); // pitch
 
-          note.ele('duration').txt(`${beatDurationTicks}`).up();
+          note.ele('duration').txt(`${beatDurationTicks}`).up(); // Duration on first note
           note.ele('voice').txt(staff1Voice).up();
-          note.ele('type').txt(musicXmlBeatType).up();
+          note.ele('type').txt(musicXmlBeatType).up(); // Type on first note
           note.ele('stem').txt(staff1Stem).up();
           note.ele('staff').txt(staff1Staff).up();
-          // Add accidental?
-          note.up();
+          note.up(); // note
           staff1HasNote = true;
-        } else {
-          console.warn(`Failed pitch conversion for Soprano MIDI: ${sopMidi}`);
         }
       }
 
+      // Add Alto Note (if exists)
       if (altMidi !== null) {
         const pitch = midiToMusicXMLPitch(altMidi);
         if (pitch) {
           const note = measureBuilder.ele('note');
           if (!staff1HasNote) {
-            // Alto is the primary note if Soprano didn't exist
+            // If S was null, A gets duration/type
             note.ele('duration').txt(`${beatDurationTicks}`).up();
             note.ele('type').txt(musicXmlBeatType).up();
-            staff1HasNote = true; // Mark that staff 1 chord has started
+            staff1HasNote = true;
           } else {
-            // Alto shares stem with Soprano
+            // Otherwise, it's part of the chord
             note.ele('chord').up();
           }
           const pitchEl = note.ele('pitch');
           pitchEl.ele('step').txt(pitch.step).up();
-          if (pitch.alter !== undefined && pitch.alter !== 0) {
+          if (pitch.alter !== undefined)
             pitchEl.ele('alter').txt(`${pitch.alter}`).up();
-          }
           pitchEl.ele('octave').txt(`${pitch.octave}`).up();
-          pitchEl.up(); // Close pitch
+          pitchEl.up(); // pitch
 
-          note.ele('voice').txt(staff1Voice).up(); // Same voice as Soprano
-          note.ele('stem').txt(staff1Stem).up(); // Same stem as Soprano
+          note.ele('voice').txt(staff1Voice).up(); // Same voice
+          note.ele('stem').txt(staff1Stem).up(); // Same stem
           note.ele('staff').txt(staff1Staff).up();
-          // Add accidental?
-          note.up();
-        } else {
-          console.warn(`Failed pitch conversion for Alto MIDI: ${altMidi}`);
+          note.up(); // note
         }
       }
 
-      // If neither Soprano nor Alto had a note, add a rest to Voice 1 / Staff 1
+      // Add Rest to Staff 1 if no notes were added
       if (!staff1HasNote) {
         measureBuilder
           .ele('note')
@@ -1312,7 +1370,7 @@ export function generateVoices(
           .up()
           .ele('type')
           .txt(musicXmlBeatType)
-          .up() // type often included for rests too
+          .up()
           .ele('staff')
           .txt(staff1Staff)
           .up()
@@ -1322,70 +1380,62 @@ export function generateVoices(
       // --- Staff 2: Tenor (Primary) & Bass (Chord) ---
       const staff2Voice = '2';
       const staff2Staff = '2';
-      // Simple stem rule: down unless Tenor is G3 or lower (can be refined)
-      let staff2Stem = tenMidi !== null && tenMidi <= 55 ? 'up' : 'down';
-      // If only Bass exists, its pitch determines the stem
+      let staff2Stem = tenMidi !== null && tenMidi <= 55 ? 'up' : 'down'; // Default down, up if T is low
       if (tenMidi === null && basMidi !== null) {
         staff2Stem = basMidi <= 55 ? 'up' : 'down';
-      }
+      } // Stem based on B if T absent
 
+      // Add Tenor Note (if exists)
       if (tenMidi !== null) {
         const pitch = midiToMusicXMLPitch(tenMidi);
         if (pitch) {
           const note = measureBuilder.ele('note');
           const pitchEl = note.ele('pitch');
           pitchEl.ele('step').txt(pitch.step).up();
-          if (pitch.alter !== undefined && pitch.alter !== 0) {
+          if (pitch.alter !== undefined)
             pitchEl.ele('alter').txt(`${pitch.alter}`).up();
-          }
           pitchEl.ele('octave').txt(`${pitch.octave}`).up();
-          pitchEl.up(); // Close pitch
+          pitchEl.up(); // pitch
 
           note.ele('duration').txt(`${beatDurationTicks}`).up();
           note.ele('voice').txt(staff2Voice).up();
           note.ele('type').txt(musicXmlBeatType).up();
           note.ele('stem').txt(staff2Stem).up();
           note.ele('staff').txt(staff2Staff).up();
-          // Add accidental?
-          note.up();
+          note.up(); // note
           staff2HasNote = true;
-        } else {
-          console.warn(`Failed pitch conversion for Tenor MIDI: ${tenMidi}`);
         }
       }
 
+      // Add Bass Note (if exists)
       if (basMidi !== null) {
         const pitch = midiToMusicXMLPitch(basMidi);
         if (pitch) {
           const note = measureBuilder.ele('note');
           if (!staff2HasNote) {
-            // Bass is the primary note if Tenor didn't exist
+            // If T was null, B gets duration/type
             note.ele('duration').txt(`${beatDurationTicks}`).up();
             note.ele('type').txt(musicXmlBeatType).up();
             staff2HasNote = true;
           } else {
-            // Bass shares stem with Tenor
+            // Otherwise, it's part of the chord
             note.ele('chord').up();
           }
           const pitchEl = note.ele('pitch');
           pitchEl.ele('step').txt(pitch.step).up();
-          if (pitch.alter !== undefined && pitch.alter !== 0) {
+          if (pitch.alter !== undefined)
             pitchEl.ele('alter').txt(`${pitch.alter}`).up();
-          }
           pitchEl.ele('octave').txt(`${pitch.octave}`).up();
-          pitchEl.up(); // Close pitch
+          pitchEl.up(); // pitch
 
-          note.ele('voice').txt(staff2Voice).up(); // Same voice as Tenor
-          note.ele('stem').txt(staff2Stem).up(); // Same stem as Tenor
+          note.ele('voice').txt(staff2Voice).up(); // Same voice
+          note.ele('stem').txt(staff2Stem).up(); // Same stem
           note.ele('staff').txt(staff2Staff).up();
-          // Add accidental?
-          note.up();
-        } else {
-          console.warn(`Failed pitch conversion for Bass MIDI: ${basMidi}`);
+          note.up(); // note
         }
       }
 
-      // If neither Tenor nor Bass had a note, add a rest to Voice 2 / Staff 2
+      // Add Rest to Staff 2 if no notes were added
       if (!staff2HasNote) {
         measureBuilder
           .ele('note')
@@ -1407,7 +1457,7 @@ export function generateVoices(
       }
     } // End for each beat
 
-    // Update previous notes for the next measure's voice leading check
+    // Update previous notes for next measure's checks
     previousMeasureLastNotes = { ...currentMeasureVoicing };
     measureBuilder.up(); // Close measure
   } // End for each measure
@@ -1419,35 +1469,45 @@ export function generateVoices(
 }
 
 // --- Optional: Example Usage (for testing in Node.js) ---
+
 /*
-import * as fs from 'fs';
+// Save the above code as generation.ts
+// Make sure you have installed dependencies: npm install tonal xmlbuilder2
+// You might also need types: npm install --save-dev @types/node
+// Compile: tsc generation.ts
+// Run: node generation.js (or adjust based on your tsconfig/build setup)
+
+import * as fs from 'fs'; // Node.js file system module
 
 try {
-    const key = "Fm"; // Test minor key
-    const measures = 12;
-    const complexity = 7;
-    const smoothness = 6;
-    const strictness = 4;
+    const key = "A"; // Test A Major
+    const measures = 10;
+    const complexity = 7; // Allow V7 and some secondary chords
+    const smoothness = 5; // Moderate smoothness preference
+    const strictness = 5; // Check rules, log warnings
     const meter = "4/4";
 
-    console.log(`Generating ${measures} measures in ${key} ${meter}, complexity ${complexity}...`);
+    console.log(`Generating ${measures}m of ${key} ${meter}, complexity ${complexity}, grand staff shared stems...`);
 
     const progression = generateChordProgression(key, measures, complexity);
     const settings: GenerationSettings = { melodicSmoothness: smoothness, dissonanceStrictness: strictness };
 
     const xmlOutput = generateVoices(progression, key, meter, measures, settings);
 
-    console.log("\n--- Generated MusicXML ---");
-    // console.log(xmlOutput); // Uncomment to log XML to console
+    // Output to console (optional)
+    // console.log("\n--- Generated MusicXML ---");
+    // console.log(xmlOutput);
 
-    fs.writeFileSync('generated_chorale_consolidated.musicxml', xmlOutput);
-    console.log("Saved to generated_chorale_consolidated.musicxml");
+    // Save to file
+    const filename = 'generated_chorale_complete.musicxml';
+    fs.writeFileSync(filename, xmlOutput);
+    console.log(`MusicXML saved to ${filename}`);
 
 } catch (error) {
     console.error("\n--- ERROR DURING GENERATION ---");
     if (error instanceof Error) {
         console.error(error.message);
-        console.error(error.stack);
+        if(error.stack) console.error(error.stack);
     } else {
         console.error(error);
     }
