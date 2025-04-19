@@ -1,0 +1,18 @@
+{
+  "short_name": "RMS Hub",
+  "name": "RMS Hub",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "250x250"
+    }
+  ],
+  "id": "/?source=pwa",
+  "start_url": "/?source=pwa",
+  "background_color": "#d3d7de",
+  "display": "standalone",
+  "scope": "/",
+  "theme_color": "#d3d7de",
+  "description": "The main RMS app"
+}

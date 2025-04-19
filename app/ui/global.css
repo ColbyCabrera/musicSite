@@ -1,0 +1,414 @@
+@import 'tailwindcss';
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:is(.dark *));
+@custom-variant hover (&:hover);
+
+@layer base {
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+@theme {
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-caret-blink: caret-blink 1.25s ease-out infinite;
+
+  --grid-template-columns-16: repeat(16, minmax(0, 1fr));
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+
+  @keyframes caret-blink {
+    0%,
+    70%,
+    100% {
+      opacity: 1;
+    }
+    20%,
+    50% {
+      opacity: 0;
+    }
+  }
+}
+
+@utility container {
+  margin-inline: auto;
+  padding-inline: 2rem;
+  @media (width >= --theme(--breakpoint-sm)) {
+    max-width: none;
+  }
+  @media (width >= 1400px) {
+    max-width: 1400px;
+  }
+}
+
+/*
+  The default border color has changed to `currentColor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* CALENDAR STYLING */
+
+.fc-scroller,
+table,
+td {
+  @apply rounded-lg!;
+}
+
+.fc-scroller,
+.fc-view-harness {
+  @apply border-transparent!;
+}
+
+td,
+th {
+  @apply border-r-0!;
+}
+
+.fc-scrollgrid {
+  @apply border-r!;
+}
+
+::-webkit-scrollbar {
+  @apply h-2 w-2 rounded-lg bg-inherit;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply w-2 rounded-lg bg-slate-200;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-300;
+}
+
+::-webkit-scrollbar-thumb:active {
+  @apply bg-slate-300;
+}
+
+/* CALENDAR TOOLBAR STYLING */
+
+.fc-toolbar {
+  @apply mb-4! flex w-full flex-col flex-wrap justify-center lg:mb-3! lg:flex-row;
+}
+
+.fc-toolbar > :nth-child(1) {
+  @apply order-2 w-full overflow-hidden rounded-t-lg border border-b-0 lg:order-none lg:w-auto lg:overflow-auto lg:rounded-lg lg:border-b;
+}
+.fc-toolbar > :nth-child(2) {
+  @apply order-1 lg:order-none;
+}
+.fc-toolbar > :nth-child(3) {
+  @apply order-3 w-full overflow-hidden rounded-b-lg border lg:order-none lg:w-auto lg:overflow-auto lg:rounded-lg;
+}
+
+.fc-toolbar-title {
+  @apply mb-4! text-2xl! font-semibold! md:mx-3! md:mb-3! md:block lg:mb-0!;
+}
+
+.fc-button {
+  @apply min-w-fit transition-colors! hover:bg-slate-100!;
+}
+
+.fc-event {
+  @apply mt-0 mb-0 rounded-sm p-px hover:opacity-95;
+}
+
+/* START: Fix text not having enough space in week view */
+.fc-timeGridWeek-view .fc-event-main div {
+  @apply flex-wrap;
+}
+
+.fc-timeGridWeek-view .fc-event.increase-height {
+  @apply h-fit! min-h-full;
+}
+
+.fc-timeGridWeek-view .fc-event {
+  @apply rounded-md opacity-80;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.fc-timeGridWeek-view .time-text {
+  @apply hidden;
+}
+
+.increase-height .time-text {
+  @apply block;
+}
+
+.fc-timeGridWeek-view .fc-event-main {
+  container-type: inline-size;
+  overflow: hidden;
+}
+
+.fc-dayGridMonth-view .event-content {
+  overflow: hidden;
+}
+
+/* END: Fix text not having enough space in week view */
+
+/* START: Style day view */
+.fc-dayGridDay-view .fc-event-main .event-content:not(.day-view) {
+  @apply hidden; /* Hide event content for other views */
+}
+
+.day-view {
+  @apply hidden; /* Hide day view event content on other views */
+}
+
+.fc-dayGridDay-view .day-view {
+  @apply block;
+}
+
+.fc-dayGridDay-view .fc-event {
+  @apply rounded-lg;
+}
+
+.fc-dayGridDay-view .fc-event-main {
+  @apply min-h-10;
+}
+
+.fc-dayGridDay-view .event-content {
+  @apply gap-2 text-sm;
+}
+
+.fc-dayGridDay-view .event-content p {
+  @apply text-wrap;
+}
+
+/* END: Style day view */
+
+.fc-daygrid-day-number {
+  @apply font-light;
+}
+
+.fc-daygrid-event-harness-abs {
+  @apply pb-px;
+}
+
+.fc-button-group {
+  @apply w-full overflow-hidden lg:rounded-md!;
+}
+
+.fc-button {
+  @apply text-accent-foreground! rounded-none! border-none! bg-slate-50! text-base! font-medium! focus:ring-0! focus:outline-hidden!;
+}
+
+.fc-button-active {
+  @apply bg-slate-100! hover:bg-slate-200!;
+}
+
+.fc-button-group button:disabled {
+  @apply border-slate-700! bg-slate-950!;
+}
+
+.fc-today-button:disabled[title] {
+  @apply text-muted-foreground! bg-slate-200!;
+}
+
+/* STYLING FOR CALENDAR ITEMS BASED ON STATUS */
+
+.fc-event:has(div.completed-job) {
+  @apply opacity-70;
+
+  p,
+  b {
+    @apply text-slate-300;
+  }
+}
+
+/* MOBILE DRAWER STYLING */
+
+.hide-handle > div:first-child {
+  display: none;
+}
+
+/* Animations */
+
+.fade-in {
+  animation: fade-in 0.4s;
+}
+
+.fade-in-short {
+  animation: fade-in 0.2s !important;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 100;
+  }
+}
+
+.fade-out {
+  animation: fade-out 0.2s !important;
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 100;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.stretch-in {
+  animation: stretch-in 0.2s;
+}
+
+@keyframes stretch-in {
+  from {
+    transform: scaleY(0);
+    transform-origin: top;
+  }
+  to {
+    transform: scaleY(1);
+    transform-origin: top;
+  }
+}
+
+/* FIXES FOR ACCORDION ANIMATION BUG */
+select[aria-hidden] {
+  display: none;
+}
+
+input[type='checkbox'][aria-hidden] {
+  display: none;
+}
