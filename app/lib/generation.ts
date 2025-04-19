@@ -1,8 +1,8 @@
 // src/generation.ts
 // Description:
-// Consolidated core logic for generating chord progressions
-// and four-part voice leading, outputting MusicXML for Grand Staff
-// with shared stems.
+// Consolidated logic for generating chord progressions and music.
+// Supports generating SATB chorales or Melody + Accompaniment style music.
+// Outputs MusicXML for Grand Staff with shared stems within each staff.
 
 // --- Library Imports ---
 import * as Tonal from 'tonal';
@@ -11,9 +11,9 @@ import { XMLBuilder } from 'xmlbuilder2/lib/interfaces'; // Optional: For type h
 
 // --- Configuration Constants ---
 
-/** Defines the standard order of voices from highest to lowest. */
-type VoiceName = 'soprano' | 'alto' | 'tenor' | 'bass';
-const VOICE_ORDER: ReadonlyArray<VoiceName> = [
+/** Defines the standard order of voices from highest to lowest for SATB. */
+type VoiceNameSATB = 'soprano' | 'alto' | 'tenor' | 'bass';
+const VOICE_ORDER_SATB: ReadonlyArray<VoiceNameSATB> = [
   'soprano',
   'alto',
   'tenor',
