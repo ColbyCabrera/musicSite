@@ -3,7 +3,7 @@
 //              and four-part voice leading, outputting MusicXML.
 
 // --- Library Imports ---
-import * as Tonal from '@tonaljs/tonal';
+import * as Tonal from 'tonal';
 import { create } from 'xmlbuilder2';
 import { XMLBuilder } from 'xmlbuilder2/lib/interfaces'; // Optional: For type hints
 
@@ -70,12 +70,16 @@ export interface GenerationSettings {
 function getChordNotesFromRoman(roman: string, key: string): number[] {
   try {
     const chordSymbol = Tonal.RomanNumeral.get(roman);
+    console.log(chordSymbol);
+
     // Ensure octave is reasonable for chord generation context
     // Tonal's RomanNumeral often includes octave, use it if present, else default
-    const chordOctave = chordSymbol.octave ?? DEFAULT_OCTAVE;
+    const chordOctave = DEFAULT_OCTAVE;
     const chordName = chordSymbol.name + chordOctave; // e.g., Cmaj74
     // Transpose relative to key tonic at octave 0 to get absolute chord name
     const absoluteChordName = Tonal.Chord.transpose(chordName, key + '0');
+
+    console.log(chordSymbol);
     const chord = Tonal.Chord.get(absoluteChordName);
 
     if (!chord || chord.empty) {
