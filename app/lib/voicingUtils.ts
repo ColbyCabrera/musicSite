@@ -5,7 +5,7 @@ import { midiToNoteName } from './harmonyUtils'; // Import if needed for logging
 
 /**
  * Selects the "best" MIDI note from allowed notes based on target, previous note, and smoothness.
- * Prioritizes stepwise motion if available and smoothness is high.
+ * Prioritizes stepwise motion if available and smoothness is high. Penalizes repetition.
  * @param targetMidi - The ideal target MIDI note (e.g., based on range center).
  * @param allowedNotes - Array of valid MIDI notes (in range, in chord). MUST be sorted ascending.
  * @param previousNoteMidi - MIDI note of this voice in the previous chord/beat.
@@ -29,6 +29,7 @@ export function findClosestNote(
 
   let bestNote: number = allowedNotes[0];
   let minScore: number = Infinity;
+  const smoothnessWeight = smoothnessPref / 10.0; // Normalize smoothness 0.0 to 1.0
 
   // Scoring Logic
   allowedNotes.forEach((note) => {
@@ -36,25 +37,28 @@ export function findClosestNote(
 
     if (previousNoteMidi !== null) {
       const interval = Math.abs(note - previousNoteMidi);
-      const smoothnessWeight = smoothnessPref / 10.0;
 
+      // --- Penalize Repetition ---
+      // Add a penalty for repeating the previous note.
+      // The penalty decreases slightly as smoothness preference increases (high smoothness might favor repetition over leaps).
       if (interval === 0) {
-        // Repeated note
-        score *= 0.8 + 0.2 * (1.0 - smoothnessWeight); // Slight penalty, reduced by smoothness
-      } else if (interval <= 2) {
-        // Stepwise
-        score *= 0.4 * (1.0 - smoothnessWeight * 0.5); // Strong bonus, increases with smoothness
+        score += 5 * (1.0 - smoothnessWeight * 0.5); // Additive penalty for repetition
+      }
+      // --- Score based on interval size ---
+      else if (interval <= 2) {
+        // Stepwise: Strong bonus, increasing with smoothness
+        score *= 0.4 * (1.0 - smoothnessWeight * 0.5);
       } else if (interval <= avoidLeapThreshold) {
-        // Small/Medium Leap
+        // Small/Medium Leap: Moderate penalty, increasing with smoothness and interval size
         score *=
-          1.0 + (interval / avoidLeapThreshold) * (smoothnessWeight * 0.6); // Moderate penalty
+          1.0 + (interval / avoidLeapThreshold) * (smoothnessWeight * 0.6);
       } else {
-        // Large Leap
-        score *= 1.5 + (interval / 12.0) * smoothnessWeight * 1.5; // Strong penalty
+        // Large Leap: Strong penalty, increasing with smoothness and interval size
+        score *= 1.5 + (interval / 12.0) * smoothnessWeight * 1.5;
       }
     } else {
-      // No previous note
-      score *= 1.0 + (Math.abs(note - targetMidi) / 24.0) * 0.1; // Slight penalty for distance from target
+      // No previous note: Slight penalty for distance from target
+      score *= 1.0 + (Math.abs(note - targetMidi) / 24.0) * 0.1;
     }
 
     // Update Best Note
@@ -62,7 +66,7 @@ export function findClosestNote(
       minScore = score;
       bestNote = note;
     } else if (previousNoteMidi !== null && Math.abs(score - minScore) < 0.1) {
-      // Tie-breaker for smoothness
+      // Tie-breaker for smoothness (prefer smaller interval if scores are very close)
       if (
         Math.abs(note - previousNoteMidi) <
         Math.abs(bestNote - previousNoteMidi)
@@ -73,14 +77,15 @@ export function findClosestNote(
     }
   });
 
-  // Post-selection Check: Override large leap if a good stepwise option exists?
+  // --- Post-selection Check: Override large leap if a good stepwise option exists? ---
+  // (Keep this logic as it helps enforce smoothness when desired)
   if (
     previousNoteMidi !== null &&
     smoothnessPref > 5 &&
     Math.abs(bestNote - previousNoteMidi) > avoidLeapThreshold
   ) {
     const stepNotes = allowedNotes.filter(
-      (n) => Math.abs(n - previousNoteMidi!) <= 2,
+      (n) => Math.abs(n - previousNoteMidi!) <= 2 && n !== previousNoteMidi, // Exclude repeated notes here too
     );
     if (stepNotes.length > 0) {
       let bestStepNote = stepNotes[0];
@@ -94,16 +99,21 @@ export function findClosestNote(
         }
       });
 
+      // Calculate how much worse (further from target) the step note is compared to the leaped note
       const targetClosenessFactor =
         minScore > 0
           ? minStepTargetScore / minScore
           : minStepTargetScore > 0
             ? 2.0
             : 1.0;
-      const LEAP_OVERRIDE_THRESHOLD = 1.5 + (10 - smoothnessPref) / 10.0; // Range 1.5 to 2.5
+      // Define how much worse the step note can be to still override the leap
+      // Higher smoothness means we tolerate a step note that's further from the target
+      const LEAP_OVERRIDE_THRESHOLD = 1.5 + smoothnessWeight * 1.0; // Range 1.5 to 2.5
 
       if (targetClosenessFactor < LEAP_OVERRIDE_THRESHOLD) {
-        // console.log(` Smoothness Override: Leap ${midiToNoteName(bestNote)} replaced by Step ${midiToNoteName(bestStepNote)}`); // Debug
+        console.log(
+          `    [Voicing Info] Smoothness Override: Leap to ${midiToNoteName(bestNote)} replaced by Step to ${midiToNoteName(bestStepNote)}`,
+        ); // Debug
         bestNote = bestStepNote;
       }
     }
