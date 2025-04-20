@@ -254,6 +254,7 @@ function getRhythmicPattern(
 
 /**
  * Generates musical events for a single rhythmic event (e.g., a beat) within a measure.
+ * Includes arpeggiation for Melody/Accompaniment style during shorter durations.
  * @param baseChordNotes - Root position MIDI notes for the current chord.
  * @param requiredBassPc - The required bass pitch class for inversion (null if root pos).
  * @param previousNotes - The notes from the *immediately preceding* event.
@@ -277,146 +278,197 @@ function generateNotesForEvent(
     generationStyle,
     numAccompanimentVoices = 3,
   } = generationSettings;
-  const { divisions } = timingInfo; // divisions needed for note type calc
+  const { divisions, beatDurationTicks } = timingInfo;
 
-  const chordRootMidi = baseChordNotes[0]; // Root of the chord
-  const chordPcs = baseChordNotes.map((n) => n % 12); // Root position pitch classes
-  const fullChordNotePool = getExtendedChordNotePool(baseChordNotes); // Pool based on root pos notes
+  const chordRootMidi = baseChordNotes[0];
+  const chordPcs = baseChordNotes.map((n) => n % 12);
+  const fullChordNotePool = getExtendedChordNotePool(baseChordNotes);
   let currentNotes: PreviousNotes;
-  const eventNotes: MusicalEvent[] = [];
-  const noteType = getNoteTypeFromDuration(eventDurationTicks, divisions);
+  const eventNotes: MusicalEvent[] = []; // Holds ALL events generated for this logical duration
+  const eventNoteType = getNoteTypeFromDuration(eventDurationTicks, divisions); // Type for the *whole* event duration
 
   console.log(
-    `    Generating event (Duration: ${eventDurationTicks} ticks / Type: ${noteType})`,
+    `    Generating event (Duration: ${eventDurationTicks} ticks / Type: ${eventNoteType})`,
   );
 
   if (generationStyle === 'SATB') {
+    // --- SATB Logic (Unchanged) ---
     const prevSATB = previousNotes as PreviousNotesSATB;
-
-    // Assign Bass first, respecting inversion
     const bass = assignBassNoteSATB(
-      requiredBassPc, // Pass the required PC
-      chordRootMidi, // Still useful fallback target
+      requiredBassPc,
+      chordRootMidi,
       fullChordNotePool,
       prevSATB.bass,
       melodicSmoothness,
     );
-
-    // Assign Soprano (independent of inversion for now)
     const soprano = assignSopranoOrMelodyNote(
       fullChordNotePool,
       prevSATB.soprano,
       melodicSmoothness,
       'SATB',
     );
-
-    // Assign Inner Voices (using the actual chosen bass note)
     const { tenorNoteMidi: tenor, altoNoteMidi: alto } = assignInnerVoicesSATB(
-      chordPcs, // Use root position PCs for doubling rules
+      chordPcs,
       fullChordNotePool,
       prevSATB.tenor,
       prevSATB.alto,
       soprano,
-      bass, // Pass the potentially inverted bass note
+      bass,
       melodicSmoothness,
       keyDetails,
     );
-
     currentNotes = { soprano, alto, tenor, bass };
     console.log(
       `      SATB Voicing: S=${midiToNoteName(soprano)} A=${midiToNoteName(alto)} T=${midiToNoteName(tenor)} B=${midiToNoteName(bass)} (Req Bass PC: ${requiredBassPc})`,
     );
-
-    // Create SATB events for this specific duration
     const staff1Notes = [soprano, alto];
     const staff2Notes = [tenor, bass];
     let staff1Stem: 'up' | 'down' =
       soprano !== null && soprano >= 71 ? 'down' : 'up';
     let staff2Stem: 'up' | 'down' =
       tenor !== null && tenor <= 55 ? 'up' : 'down';
-
+    // SATB events are still block chords for the whole event duration
     eventNotes.push(
       ...createStaffEvents(
         staff1Notes,
         '1',
-        '1', // Voice 1 on Staff 1 (Soprano/Alto)
+        '1',
         staff1Stem,
         eventDurationTicks,
-        noteType,
+        eventNoteType,
       ),
     );
     eventNotes.push(
       ...createStaffEvents(
         staff2Notes,
         '2',
-        '2', // Voice 2 on Staff 2 (Tenor/Bass) - Simple 2-voice setup for now
+        '2',
         staff2Stem,
         eventDurationTicks,
-        noteType,
+        eventNoteType,
       ),
     );
   } else {
-    // MelodyAccompaniment Style
+    // --- MelodyAccompaniment Style ---
     const prevMA = previousNotes as PreviousNotesMelodyAccompaniment;
+
+    // --- Generate Melody ---
     const melody = assignSopranoOrMelodyNote(
       fullChordNotePool,
       prevMA.melody,
       melodicSmoothness,
       'MelodyAccompaniment',
     );
-
-    // Accompaniment voicing needs the *actual* bass note if inverted
-    // However, generateAccompanimentVoicing primarily uses root/pcs/pool.
-    // We might adapt it later to prioritize the inverted bass note if needed.
-    // For now, let it generate based on root position info.
-    const accompaniment = generateAccompanimentVoicing(
-      melody,
-      chordRootMidi,
-      chordPcs,
-      fullChordNotePool,
-      prevMA.accompaniment,
-      melodicSmoothness,
-      numAccompanimentVoices,
-    );
-    currentNotes = { melody, accompaniment };
-    console.log(
-      `      Melody+Acc Voicing: M=${midiToNoteName(melody)} Acc=[${accompaniment.map(midiToNoteName).join(', ')}]`,
-    );
-
-    // Create Melody/Accompaniment events for this duration
     let melodyStem: 'up' | 'down' =
       melody !== null && melody >= 71 ? 'down' : 'up';
-    let accompStem: 'up' | 'down' = 'down';
-    const highestAccomp = accompaniment.filter((n) => n !== null).pop();
-    if (
-      highestAccomp !== undefined &&
-      highestAccomp !== null &&
-      highestAccomp <= 55
-    ) {
-      accompStem = 'up';
-    }
-
+    // Add melody event(s) - might be a single note or could be split if implementing rests within melody later
     eventNotes.push(
       ...createStaffEvents(
         [melody],
         '1',
-        '1', // Melody voice
+        '1',
         melodyStem,
         eventDurationTicks,
-        noteType,
+        eventNoteType,
       ),
     );
-    eventNotes.push(
-      ...createStaffEvents(
-        accompaniment,
-        '2',
-        '2', // Accompaniment voice(s) - treated as single voice for now
-        accompStem,
-        eventDurationTicks,
-        noteType,
-      ),
+
+    // --- Generate Accompaniment ---
+    // Always generate the potential voicing first
+    const accompanimentVoicing = generateAccompanimentVoicing(
+      melody,
+      chordRootMidi,
+      chordPcs,
+      fullChordNotePool,
+      prevMA.accompaniment, // Use previous voicing for smoothness targeting
+      melodicSmoothness,
+      numAccompanimentVoices,
     );
-  }
+    // Filter out nulls and sort low to high for arpeggiation
+    const validAccompNotes = accompanimentVoicing
+      .filter((n): n is number => n !== null)
+      .sort((a, b) => a - b);
+
+    // Decide whether to arpeggiate or play block chord
+    // Simple logic: Arpeggiate if the event is shorter than a beat AND we have enough notes
+    const ARPEGGIATE_THRESHOLD_TICKS = beatDurationTicks;
+    const shouldArpeggiate =
+      eventDurationTicks < ARPEGGIATE_THRESHOLD_TICKS &&
+      validAccompNotes.length > 1;
+
+    // --- Create Accompaniment Events (Arpeggio or Block) ---
+    let accompStemDirection: 'up' | 'down' = 'down'; // Default stem down for bass clef
+    if (validAccompNotes.length > 0) {
+      const highestAccompNote = validAccompNotes[validAccompNotes.length - 1];
+      if (highestAccompNote <= 55) {
+        // If highest note is low (e.g., <= G3)
+        accompStemDirection = 'up';
+      }
+    }
+
+    if (shouldArpeggiate) {
+      console.log(
+        `      Accompaniment: Arpeggiating [${validAccompNotes.map(midiToNoteName).join(', ')}]`,
+      );
+      // --- Arpeggiation Logic ---
+      const numArpeggioNotes = validAccompNotes.length; // Use all valid notes
+      const arpeggioNoteDuration = Math.max(
+        1,
+        Math.floor(eventDurationTicks / numArpeggioNotes),
+      ); // Divide duration equally (integer ticks)
+      let remainingTicks = eventDurationTicks;
+
+      // Simple ascending arpeggio
+      for (let i = 0; i < numArpeggioNotes; i++) {
+        const noteMidi = validAccompNotes[i];
+        // Adjust duration of last note to fill remaining time exactly
+        const currentNoteDuration =
+          i === numArpeggioNotes - 1 ? remainingTicks : arpeggioNoteDuration;
+
+        if (currentNoteDuration <= 0) continue; // Skip if no time left
+
+        const arpeggioNoteType = getNoteTypeFromDuration(
+          currentNoteDuration,
+          divisions,
+        );
+
+        eventNotes.push({
+          type: 'note',
+          midi: noteMidi,
+          durationTicks: currentNoteDuration,
+          staffNumber: '2',
+          voiceNumber: '2', // Keep in the same voice for simplicity
+          stemDirection: accompStemDirection,
+          noteType: arpeggioNoteType,
+          isChordElement: false, // Individual notes, not a simultaneous chord
+        });
+        remainingTicks -= currentNoteDuration;
+      }
+      // If ticks remain due to floor division, add a short rest? Or adjust last note? (Adjusted above)
+    } else {
+      console.log(
+        `      Accompaniment: Block Chord [${validAccompNotes.map(midiToNoteName).join(', ')}]`,
+      );
+      // --- Block Chord Logic ---
+      // Use createStaffEvents to generate the simultaneous chord notes
+      eventNotes.push(
+        ...createStaffEvents(
+          validAccompNotes, // Use the generated notes
+          '2',
+          '2', // Accompaniment voice(s)
+          accompStemDirection,
+          eventDurationTicks, // Duration is for the whole block
+          eventNoteType,
+        ),
+      );
+    }
+
+    // --- Update State ---
+    // Melody state is the single note generated.
+    // Accompaniment state should reflect the notes chosen in the voicing, even if arpeggiated,
+    // so the *next* voicing calculation has a smooth target.
+    currentNotes = { melody, accompaniment: accompanimentVoicing };
+  } // End MelodyAccompaniment Style
 
   return { currentNotes, eventNotes };
 }
