@@ -131,45 +131,125 @@ function initializePreviousNotes(
 }
 
 /**
- * Defines a simple rhythmic pattern for a measure.
- * Example: [1, 1, 1, 1] for four quarter notes in 4/4.
- * Duration values are relative to the beatDurationTicks.
+ * Defines a rhythmic pattern for a measure, adding some variation.
+ * Example: [1, 0.5, 0.5, 1] might represent Q, E, E, Q in 4/4.
+ * Duration values are factors relative to the beatDurationTicks.
  * @param timingInfo - Timing information for the measure.
+ * @param complexity - A value (e.g., 0-10) influencing variation (higher = more chance of shorter notes). Default 3.
  * @returns Array of duration factors (relative to beat duration).
  */
-function getRhythmicPattern(timingInfo: TimingInfo): number[] {
+function getRhythmicPattern(
+  timingInfo: TimingInfo,
+  complexity: number = 3,
+): number[] {
   const { meterBeats, beatDurationTicks, measureDurationTicks } = timingInfo;
-  // Simple default: Fill the measure with beats
-  // TODO: Implement more varied rhythms based on settings
-  const pattern: number[] = [];
-  let remainingTicks = measureDurationTicks;
+  const patternFactors: number[] = [];
+  let currentTicks = 0;
+  const complexityThreshold = Math.max(0.1, Math.min(0.9, complexity / 10)); // Normalize complexity to 0.1-0.9 range
+
+  console.log(
+    `  Generating rhythm for ${meterBeats} beats. Complexity threshold: ${complexityThreshold.toFixed(2)}`,
+  );
+
+  // --- Rhythmic Choices ---
+  // Define possible rhythmic units per beat (factors relative to beat duration)
+  // Format: [probability_weight, [factor1, factor2, ...]]
+  const beatPatterns: [number, number[]][] = [
+    [1.0 - complexityThreshold, [1.0]], // Simple: One beat (e.g., Quarter note) - Higher chance if complexity is low
+    [complexityThreshold, [0.5, 0.5]], // Varied: Two half-beats (e.g., Two Eighth notes) - Higher chance if complexity is high
+    // Add more complex patterns here:
+    // [complexityThreshold * 0.5, [0.75, 0.25]], // Dotted Eighth + Sixteenth (requires higher divisions)
+    // [complexityThreshold * 0.4, [0.5, 1.0, 0.5]] // Eighth, Quarter, Eighth (Syncopated - complex handling)
+  ];
+
+  // --- Generate Pattern Beat by Beat ---
   for (let i = 0; i < meterBeats; i++) {
-    if (remainingTicks >= beatDurationTicks) {
-      pattern.push(1.0); // Add one beat duration
-      remainingTicks -= beatDurationTicks;
-    } else if (remainingTicks > 0) {
-      // Add partial beat if measure doesn't divide evenly (unlikely with common meters)
-      pattern.push(remainingTicks / beatDurationTicks);
-      remainingTicks = 0;
-      console.warn('Measure duration not multiple of beat duration?');
+    if (currentTicks >= measureDurationTicks) break; // Stop if measure is full
+
+    // Calculate remaining ticks in the measure *for this beat*
+    const remainingTicksInMeasure = measureDurationTicks - currentTicks;
+    const remainingTicksForThisBeat = Math.min(
+      beatDurationTicks,
+      remainingTicksInMeasure,
+    );
+
+    // Filter patterns that fit within the remaining beat duration
+    let possiblePatterns = beatPatterns.filter((p) => {
+      const patternTotalFactor = p[1].reduce((sum, factor) => sum + factor, 0);
+      return (
+        patternTotalFactor * beatDurationTicks <=
+        remainingTicksForThisBeat + 0.001
+      ); // Allow for tiny float errors
+    });
+
+    // If no patterns fit (e.g., end of measure with odd duration), add a single event to fill
+    if (possiblePatterns.length === 0) {
+      if (remainingTicksForThisBeat > 0) {
+        const factor = remainingTicksForThisBeat / beatDurationTicks;
+        console.log(
+          `    Beat ${i + 1}: No standard pattern fits ${remainingTicksForThisBeat} ticks. Adding factor ${factor.toFixed(2)}.`,
+        );
+        patternFactors.push(factor);
+        currentTicks += remainingTicksForThisBeat;
+      }
+      continue; // Move to next beat or end
+    }
+
+    // --- Weighted Random Selection ---
+    const totalWeight = possiblePatterns.reduce((sum, p) => sum + p[0], 0);
+    let randomChoice = Math.random() * totalWeight;
+    let chosenFactors: number[] = [1.0]; // Default just in case
+
+    for (const pattern of possiblePatterns) {
+      randomChoice -= pattern[0]; // Subtract weight
+      if (randomChoice <= 0) {
+        chosenFactors = pattern[1];
+        break;
+      }
+    }
+
+    console.log(
+      `    Beat ${i + 1}: Chose factors [${chosenFactors.join(', ')}]`,
+    );
+    patternFactors.push(...chosenFactors);
+    currentTicks += chosenFactors.reduce(
+      (sum, factor) => sum + factor * beatDurationTicks,
+      0,
+    );
+  } // End beat loop
+
+  // --- Final Adjustment (Optional but recommended) ---
+  // Recalculate total ticks from factors and adjust the last note if needed due to float inaccuracies
+  let finalTotalTicks = patternFactors.reduce(
+    (sum, factor) => sum + factor * beatDurationTicks,
+    0,
+  );
+  if (
+    Math.abs(finalTotalTicks - measureDurationTicks) > 0.01 &&
+    patternFactors.length > 0
+  ) {
+    // If difference is significant
+    const diff = measureDurationTicks - finalTotalTicks;
+    const lastFactor = patternFactors.pop()!;
+    const lastDurationTicks = lastFactor * beatDurationTicks;
+    const adjustedLastDurationTicks = lastDurationTicks + diff;
+    if (adjustedLastDurationTicks > 0) {
+      patternFactors.push(adjustedLastDurationTicks / beatDurationTicks);
+      console.log(
+        `  Adjusting final rhythm factor to ensure measure fills exactly. Original end: ${finalTotalTicks.toFixed(2)}, Target: ${measureDurationTicks}`,
+      );
     } else {
-      break;
+      console.warn(
+        `  Could not adjust final rhythm factor, duration would be <= 0.`,
+      );
+      patternFactors.push(lastFactor); // Put it back if adjustment fails
     }
   }
-  if (remainingTicks > 0) {
-    console.warn(
-      `Rhythmic pattern doesn't fill measure. Remaining ticks: ${remainingTicks}`,
-    );
-    // Optionally try to add a final short note/rest
-  }
-  // For now, let's just return meterBeats * 1.0
-  return Array(meterBeats).fill(1.0);
 
-  // Example: Fixed pattern for 4/4 - Quarter, Quarter, Half
-  // if (timingInfo.meterBeats === 4 && timingInfo.beatValue === 4) {
-  //     return [1.0, 1.0, 2.0]; // Factors relative to beat duration
-  // }
-  // return Array(timingInfo.meterBeats).fill(1.0); // Default: one note per beat
+  console.log(
+    `  Final rhythm factors: [${patternFactors.map((f) => f.toFixed(2)).join(', ')}]`,
+  );
+  return patternFactors;
 }
 
 /**
