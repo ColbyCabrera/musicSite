@@ -111,8 +111,8 @@ export default function Page() {
         const settings: GenerationSettings = {
           melodicSmoothness,
           dissonanceStrictness,
-          // --- USE STATE for generationStyle ---
-          generationStyle: generationStyle,
+          harmonicComplexity,
+          generationStyle,
         };
 
         // 1. Generate Progression

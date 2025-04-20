@@ -389,19 +389,21 @@ function generateNotesForEvent(
       .filter((n): n is number => n !== null)
       .sort((a, b) => a - b);
 
-    // Decide whether to arpeggiate or play block chord
-    // Simple logic: Arpeggiate if the event is shorter than a beat AND we have enough notes
+    /**
+     * Arpeggiation criteria:
+     * - Event duration is shorter than a full beat
+     * - At least 2 accompaniment notes are available
+     */
     const ARPEGGIATE_THRESHOLD_TICKS = beatDurationTicks;
     const shouldArpeggiate =
       eventDurationTicks < ARPEGGIATE_THRESHOLD_TICKS &&
       validAccompNotes.length > 1;
 
-    // --- Create Accompaniment Events (Arpeggio or Block) ---
-    let accompStemDirection: 'up' | 'down' = 'down'; // Default stem down for bass clef
+    // Set stem direction based on note range
+    let accompStemDirection: 'up' | 'down' = 'down';
     if (validAccompNotes.length > 0) {
       const highestAccompNote = validAccompNotes[validAccompNotes.length - 1];
-      if (highestAccompNote <= 55) {
-        // If highest note is low (e.g., <= G3)
+      if (highestAccompNote <= 55) { // Notes below G3 get upward stems
         accompStemDirection = 'up';
       }
     }
@@ -410,22 +412,22 @@ function generateNotesForEvent(
       console.log(
         `      Accompaniment: Arpeggiating [${validAccompNotes.map(midiToNoteName).join(', ')}]`,
       );
-      // --- Arpeggiation Logic ---
-      const numArpeggioNotes = validAccompNotes.length; // Use all valid notes
+      // Distribute total duration evenly among arpeggiated notes
+      const numArpeggioNotes = validAccompNotes.length;
       const arpeggioNoteDuration = Math.max(
         1,
         Math.floor(eventDurationTicks / numArpeggioNotes),
-      ); // Divide duration equally (integer ticks)
+      );
       let remainingTicks = eventDurationTicks;
 
-      // Simple ascending arpeggio
+      // Create ascending arpeggio pattern
       for (let i = 0; i < numArpeggioNotes; i++) {
         const noteMidi = validAccompNotes[i];
-        // Adjust duration of last note to fill remaining time exactly
+        // Last note fills any remaining time to ensure total duration is exact
         const currentNoteDuration =
           i === numArpeggioNotes - 1 ? remainingTicks : arpeggioNoteDuration;
 
-        if (currentNoteDuration <= 0) continue; // Skip if no time left
+        if (currentNoteDuration <= 0) continue;
 
         const arpeggioNoteType = getNoteTypeFromDuration(
           currentNoteDuration,
@@ -437,23 +439,20 @@ function generateNotesForEvent(
           midi: noteMidi,
           durationTicks: currentNoteDuration,
           staffNumber: '2',
-          voiceNumber: '2', // Keep in the same voice for simplicity
+          voiceNumber: '2',
           stemDirection: accompStemDirection,
           noteType: arpeggioNoteType,
-          isChordElement: false, // Individual notes, not a simultaneous chord
+          isChordElement: false,
         });
         remainingTicks -= currentNoteDuration;
       }
-      // If ticks remain due to floor division, add a short rest? Or adjust last note? (Adjusted above)
     } else {
       console.log(
         `      Accompaniment: Block Chord [${validAccompNotes.map(midiToNoteName).join(', ')}]`,
       );
-      // --- Block Chord Logic ---
-      // Use createStaffEvents to generate the simultaneous chord notes
       eventNotes.push(
         ...createStaffEvents(
-          validAccompNotes, // Use the generated notes
+          validAccompNotes,
           '2',
           '2', // Accompaniment voice(s)
           accompStemDirection,
@@ -475,6 +474,16 @@ function generateNotesForEvent(
 
 /**
  * Creates note or rest events for a single staff and voice.
+ * Handles both single notes and chords, automatically determining
+ * whether to create a rest or a sequence of notes.
+ * 
+ * @param notes Array of MIDI note numbers (null for rests)
+ * @param staffNumber Target staff number
+ * @param voiceNumber Voice number within the staff
+ * @param stemDirection Direction of note stems
+ * @param durationTicks Duration in MusicXML divisions
+ * @param noteType MusicXML note type
+ * @returns Array of note/rest events with the specified properties
  */
 function createStaffEvents(
   notes: (number | null)[],
@@ -488,7 +497,6 @@ function createStaffEvents(
   const validNotes = notes.filter((n): n is number => n !== null);
 
   if (validNotes.length === 0) {
-    // Add rest if no valid notes provided for this staff/voice group
     events.push({
       type: 'rest',
       durationTicks: durationTicks,
@@ -506,14 +514,23 @@ function createStaffEvents(
         voiceNumber: voiceNumber,
         stemDirection: stemDirection,
         noteType: noteType,
-        isChordElement: index > 0, // Mark subsequent notes as part of a chord
+        isChordElement: index > 0,
       });
     });
   }
   return events;
 }
 
-// generateRestEventsForMeasure (Now takes duration as argument)
+/**
+ * Creates MusicXML events for rests that fill a specific duration.
+ * Used for padding measures or handling error cases.
+ * 
+ * @param durationTicks Duration to fill in MusicXML divisions
+ * @param noteType MusicXML note type (e.g., 'quarter', 'half')
+ * @param staff Staff number ('1' or '2')
+ * @param voice Voice number within the staff
+ * @returns Array of rest events with the specified duration
+ */
 function generateRestEventsForDuration(
   durationTicks: number,
   noteType: string,
@@ -717,210 +734,183 @@ function generateMusicalData(
   return pieceData;
 }
 
-// --- MusicXML Generation Function --- (Largely Unchanged, but uses new data structures)
+// --- MusicXML Generation Function --- (Improved Documentation)
 
 /**
  * Creates a MusicXML string from the intermediate musical data structure.
- * @param data - The GeneratedPieceData object.
- * @returns {string} The MusicXML string.
+ * Handles the complete conversion of internal music representation to MusicXML format.
+ * 
+ * Key features:
+ * - Creates a two-staff score (treble/bass clef)
+ * - Properly handles key signatures in both major and minor
+ * - Supports multi-voice writing with proper backup elements
+ * - Maintains clean voice separation across measures
+ * - Includes roman numeral harmony markers
+ * 
+ * @param data - The complete musical piece data to convert
+ * @returns A well-formatted MusicXML string ready for file output
  */
 function createMusicXMLString(data: GeneratedPieceData): string {
   const { metadata, measures } = data;
 
-  // --- Key, Meter, Fifths Calculation --- (Similar to before)
+  // Calculate key signature details
   const keyDetails =
     Tonal.Key.majorKey(metadata.keySignature) ??
     Tonal.Key.minorKey(metadata.keySignature);
-  if (!keyDetails)
+  if (!keyDetails) {
     throw new Error(
       'Internal Error: Invalid key signature in metadata: ' +
         metadata.keySignature,
     );
+  }
   const keyFifths = getFifths(keyDetails.tonic);
   const keyMode = keyDetails.type === 'major' ? 'major' : 'minor';
 
+  // Parse and validate time signature
   const meterMatch = metadata.meter.match(/^(\d+)\/(\d+)$/);
-  if (!meterMatch)
+  if (!meterMatch) {
     throw new Error(
       'Internal Error: Invalid meter format in metadata: ' + metadata.meter,
     );
+  }
   const [, beatsStr, beatValueStr] = meterMatch;
   const meterBeats = parseInt(beatsStr, 10);
   const beatValue = parseInt(beatValueStr, 10);
 
-  // Use a consistent divisions value (e.g., 4 or higher for smaller notes)
-  const divisions = 4; // Divisions per quarter note - MUST match generation calculations
-
-  // --- MusicXML Document Setup --- (Similar to before)
+  // Set up XML document with MusicXML 4.0 DTD
   const root = create({ version: '1.0', encoding: 'UTF-8' })
     .dtd({
       pubID: '-//Recordare//DTD MusicXML 4.0 Partwise//EN',
       sysID: 'http://www.musicxml.org/dtds/partwise.dtd',
     })
     .ele('score-partwise', { version: '4.0' });
-  // ... (work title, identification, part-list - same as before) ...
-  root.ele('work').ele('work-title').txt(metadata.title).up().up();
-  root
-    .ele('identification')
+
+  // Add metadata
+  root.ele('work')
+    .ele('work-title').txt(metadata.title).up()
+  .up();
+  
+  root.ele('identification')
     .ele('encoding')
-    .ele('software')
-    .txt(metadata.software)
+      .ele('software').txt(metadata.software).up()
+      .ele('encoding-date').txt(metadata.encodingDate).up()
     .up()
-    .ele('encoding-date')
-    .txt(metadata.encodingDate)
-    .up()
-    .up()
-    .up();
+  .up();
 
-  root
-    .ele('part-list')
+  // Define score parts (single part with two staves)
+  root.ele('part-list')
     .ele('score-part', { id: 'P1' })
-    .ele('part-name')
-    .txt(metadata.partName)
+      .ele('part-name').txt(metadata.partName).up()
     .up()
-    .up() // score-part
-    .up(); // part-list
+  .up();
 
+  // Begin main musical content
   const partBuilder = root.ele('part', { id: 'P1' });
 
-  // --- Build Measures ---
+  // Process each measure
   measures.forEach((measureData, measureIndex) => {
     const measureBuilder = partBuilder.ele('measure', {
       number: `${measureData.measureNumber}`,
     });
 
-    // Add Attributes in First Measure (Similar to before)
+    // First measure needs complete attribute set
     if (measureIndex === 0) {
       const attributes = measureBuilder.ele('attributes');
-      attributes.ele('divisions').txt(`${divisions}`).up(); // Use consistent divisions
-      attributes
-        .ele('key')
-        .ele('fifths')
-        .txt(`${keyFifths}`)
-        .up()
-        .ele('mode')
-        .txt(keyMode)
-        .up()
-        .up();
-      attributes
-        .ele('time')
-        .ele('beats')
-        .txt(`${meterBeats}`)
-        .up()
-        .ele('beat-type')
-        .txt(`${beatValue}`)
-        .up()
-        .up();
+      // MusicXML divisions = ticks per quarter note
+      attributes.ele('divisions').txt('4').up();
+      
+      // Key signature
+      attributes.ele('key')
+        .ele('fifths').txt(`${keyFifths}`).up()
+        .ele('mode').txt(keyMode).up()
+      .up();
+      
+      // Time signature
+      attributes.ele('time')
+        .ele('beats').txt(`${meterBeats}`).up()
+        .ele('beat-type').txt(`${beatValue}`).up()
+      .up();
+      
+      // Two-staff setup with appropriate clefs
       attributes.ele('staves').txt('2').up();
-      attributes
-        .ele('clef', { number: '1' })
-        .ele('sign')
-        .txt('G')
-        .up()
-        .ele('line')
-        .txt('2')
-        .up()
-        .up();
-      attributes
-        .ele('clef', { number: '2' })
-        .ele('sign')
-        .txt('F')
-        .up()
-        .ele('line')
-        .txt('4')
-        .up()
-        .up();
-      attributes.up(); // attributes
+      attributes.ele('clef', { number: '1' })
+        .ele('sign').txt('G').up()
+        .ele('line').txt('2').up()
+      .up();
+      attributes.ele('clef', { number: '2' })
+        .ele('sign').txt('F').up()
+        .ele('line').txt('4').up()
+      .up();
+      attributes.up();
     }
 
-    // Add Harmony (Roman Numeral) - Use the full numeral now
-    measureBuilder
-      .ele('harmony')
-      // Could try to parse root/kind, but 'other' with text is safer for complex numerals
+    // Add roman numeral analysis
+    measureBuilder.ele('harmony')
       .ele('root')
-      .ele('root-step')
+        .ele('root-step').up()
       .up()
-      .up() // Placeholder
       .ele('kind')
-      .txt('other')
-      .att('text', measureData.romanNumeral)
-      .up() // Use stored roman numeral
-      .up(); // harmony
+        .txt('other')
+        .att('text', measureData.romanNumeral)
+      .up()
+    .up();
 
-    // --- Process Musical Events for the Measure ---
-    // Group events by staff and voice
-    // Assuming Voice 1 = Staff 1 (S/Melody), Voice 2 = Staff 2 (T/Accomp) for now
+    // Sort events by voice/staff
     const voice1Events = measureData.events.filter(
-      (e) => e.voiceNumber === '1',
+      (e) => e.voiceNumber === '1'
     );
     const voice2Events = measureData.events.filter(
-      (e) => e.voiceNumber === '2',
+      (e) => e.voiceNumber === '2'
     );
 
-    // Add Voice 1 events
+    // Process voice 1 (upper staff)
     if (voice1Events.length > 0) {
       addMusicalEventsToXML(measureBuilder, voice1Events);
     } else {
-      // Add full measure rest for voice 1 if no events exist (shouldn't happen if generation logic is correct)
-      console.warn(
-        `Measure ${measureData.measureNumber}: No events found for Voice 1.`,
-      );
-      const measureDurationTicks = meterBeats * divisions * (4 / beatValue);
-      const restType = getNoteTypeFromDuration(measureDurationTicks, divisions);
-      addMusicalEventsToXML(measureBuilder, [
-        {
-          type: 'rest',
-          durationTicks: measureDurationTicks,
-          staffNumber: '1',
-          voiceNumber: '1',
-          noteType: restType,
-        },
-      ]);
+      // Add fallback full measure rest
+      const measureDurationTicks = meterBeats * 4 * (4 / beatValue);
+      const restType = getNoteTypeFromDuration(measureDurationTicks, 4);
+      addMusicalEventsToXML(measureBuilder, [{
+        type: 'rest',
+        durationTicks: measureDurationTicks,
+        staffNumber: '1',
+        voiceNumber: '1',
+        noteType: restType,
+      }]);
     }
 
-    // Backup before adding Voice 2 events
+    // Process voice 2 (lower staff)
     const totalVoice1Duration = voice1Events.reduce(
       (sum, ev) => sum + ev.durationTicks,
-      0,
+      0
     );
+    
+    // Backup to start of measure for voice 2
     if (voice2Events.length > 0) {
-      measureBuilder
-        .ele('backup')
-        .ele('duration')
-        .txt(`${totalVoice1Duration}`) // Backup by the total duration of voice 1
-        .up()
-        .up();
-
-      // Add Voice 2 events
+      measureBuilder.ele('backup')
+        .ele('duration').txt(`${totalVoice1Duration}`).up()
+      .up();
       addMusicalEventsToXML(measureBuilder, voice2Events);
     } else {
-      // Add full measure rest for voice 2 if no events exist
-      console.warn(
-        `Measure ${measureData.measureNumber}: No events found for Voice 2.`,
-      );
-      const measureDurationTicks = meterBeats * divisions * (4 / beatValue);
-      const restType = getNoteTypeFromDuration(measureDurationTicks, divisions);
-      measureBuilder
-        .ele('backup')
-        .ele('duration')
-        .txt(`${totalVoice1Duration}`)
-        .up() // Backup first
-        .up();
-      addMusicalEventsToXML(measureBuilder, [
-        {
-          type: 'rest',
-          durationTicks: measureDurationTicks,
-          staffNumber: '2',
-          voiceNumber: '2',
-          noteType: restType,
-        },
-      ]);
+      // Add fallback full measure rest
+      const measureDurationTicks = meterBeats * 4 * (4 / beatValue);
+      const restType = getNoteTypeFromDuration(measureDurationTicks, 4);
+      measureBuilder.ele('backup')
+        .ele('duration').txt(`${totalVoice1Duration}`).up()
+      .up();
+      addMusicalEventsToXML(measureBuilder, [{
+        type: 'rest',
+        durationTicks: measureDurationTicks,
+        staffNumber: '2',
+        voiceNumber: '2',
+        noteType: restType,
+      }]);
     }
 
-    measureBuilder.up(); // measure
-  }); // measures.forEach
+    measureBuilder.up();
+  });
 
-  partBuilder.up(); // part
+  partBuilder.up();
   return root.end({ prettyPrint: true });
 }
 
@@ -992,29 +982,24 @@ function addMusicalEventsToXML(
   });
 }
 
-/** Calculates the 'fifths' value for MusicXML key signature. */
+/**
+ * Converts between a key signature's tonic and its corresponding number of sharps/flats
+ * in MusicXML format. Handles both major and minor keys.
+ * 
+ * @param tonic The tonic note of the key (e.g., "C", "F#", "Bb")
+ * @returns Number of fifths (-7 to +7) for the key signature
+ */
 function getFifths(tonic: string): number {
   const keyFifthsMap: { [key: string]: number } = {
-    C: 0,
-    G: 1,
-    D: 2,
-    A: 3,
-    E: 4,
-    B: 5,
-    'F#': 6,
-    'C#': 7,
-    F: -1,
-    Bb: -2,
-    Eb: -3,
-    Ab: -4,
-    Db: -5,
-    Gb: -6,
-    Cb: -7,
+    C: 0,   G: 1,   D: 2,   A: 3,   E: 4,   B: 5,   'F#': 6,  'C#': 7,
+    F: -1,  Bb: -2, Eb: -3, Ab: -4, Db: -5, Gb: -6, Cb: -7
   };
+  
   const normalized = Tonal.Note.simplify(tonic.trim());
   if (normalized in keyFifthsMap) {
     return keyFifthsMap[normalized];
   } else {
+    // For minor keys, try transposing to relative major
     const majTonic = Tonal.Note.transpose(normalized, 'm3');
     if (majTonic in keyFifthsMap) {
       return keyFifthsMap[majTonic];
@@ -1022,6 +1007,6 @@ function getFifths(tonic: string): number {
     console.warn(
       `Unsupported tonic for key signature: ${tonic} (normalized: ${normalized}). Defaulting to 0.`,
     );
-    return 0; // Fallback
+    return 0;
   }
 }
