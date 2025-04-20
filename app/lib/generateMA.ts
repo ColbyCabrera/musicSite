@@ -10,8 +10,10 @@ export default function generateMA(
 }
 
 function generateMelody(progression: string[], key: string, meter: string) {
-  const numofNotesInBar = generateRhythm(meter, 1);
-  console.log(generateRhythm(meter, 2));
+  const rhythm = generateRhythm(meter, 1);
+  const numofNotesInBar = rhythm.length;
+
+  
 }
 
 type NoteValuesMap = Record<number, Fraction>;
