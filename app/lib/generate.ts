@@ -17,7 +17,7 @@ import {
   MeasureGenerationContext,
 } from './types'; // Make sure KeyDetails, TimingInfo, MeasureGenerationContext are defined in types.ts
 import {
-  getChordNotesFromRoman,
+  getChordInfoFromRoman,
   getExtendedChordNotePool,
   midiToNoteName,
 } from './harmonyUtils';
@@ -131,91 +131,152 @@ function initializePreviousNotes(
 }
 
 /**
- * Generates musical events for a single measure when the chord is valid.
+ * Defines a simple rhythmic pattern for a measure.
+ * Example: [1, 1, 1, 1] for four quarter notes in 4/4.
+ * Duration values are relative to the beatDurationTicks.
+ * @param timingInfo - Timing information for the measure.
+ * @returns Array of duration factors (relative to beat duration).
  */
-function generateNotesForMeasure(ctx: MeasureGenerationContext): {
-  currentMeasureNotes: PreviousNotes;
-  measureEvents: MusicalEvent[];
-} {
-  const {
-    baseChordNotes,
-    previousNotes,
-    generationSettings,
-    keyDetails,
-    timingInfo,
-  } = ctx;
+function getRhythmicPattern(timingInfo: TimingInfo): number[] {
+  const { meterBeats, beatDurationTicks, measureDurationTicks } = timingInfo;
+  // Simple default: Fill the measure with beats
+  // TODO: Implement more varied rhythms based on settings
+  const pattern: number[] = [];
+  let remainingTicks = measureDurationTicks;
+  for (let i = 0; i < meterBeats; i++) {
+    if (remainingTicks >= beatDurationTicks) {
+      pattern.push(1.0); // Add one beat duration
+      remainingTicks -= beatDurationTicks;
+    } else if (remainingTicks > 0) {
+      // Add partial beat if measure doesn't divide evenly (unlikely with common meters)
+      pattern.push(remainingTicks / beatDurationTicks);
+      remainingTicks = 0;
+      console.warn('Measure duration not multiple of beat duration?');
+    } else {
+      break;
+    }
+  }
+  if (remainingTicks > 0) {
+    console.warn(
+      `Rhythmic pattern doesn't fill measure. Remaining ticks: ${remainingTicks}`,
+    );
+    // Optionally try to add a final short note/rest
+  }
+  // For now, let's just return meterBeats * 1.0
+  return Array(meterBeats).fill(1.0);
+
+  // Example: Fixed pattern for 4/4 - Quarter, Quarter, Half
+  // if (timingInfo.meterBeats === 4 && timingInfo.beatValue === 4) {
+  //     return [1.0, 1.0, 2.0]; // Factors relative to beat duration
+  // }
+  // return Array(timingInfo.meterBeats).fill(1.0); // Default: one note per beat
+}
+
+/**
+ * Generates musical events for a single rhythmic event (e.g., a beat) within a measure.
+ * @param baseChordNotes - Root position MIDI notes for the current chord.
+ * @param requiredBassPc - The required bass pitch class for inversion (null if root pos).
+ * @param previousNotes - The notes from the *immediately preceding* event.
+ * @param generationSettings - Global generation settings.
+ * @param keyDetails - Key information.
+ * @param timingInfo - Timing information.
+ * @param eventDurationTicks - The duration for *this specific event* in ticks.
+ * @returns { currentNotes: PreviousNotes; eventNotes: MusicalEvent[] } - The notes chosen for this event and the corresponding MusicXML events.
+ */
+function generateNotesForEvent(
+  baseChordNotes: number[], // Root position notes
+  requiredBassPc: number | null,
+  previousNotes: PreviousNotes,
+  generationSettings: GenerationSettings,
+  keyDetails: KeyDetails,
+  timingInfo: TimingInfo,
+  eventDurationTicks: number,
+): { currentNotes: PreviousNotes; eventNotes: MusicalEvent[] } {
   const {
     melodicSmoothness,
     generationStyle,
     numAccompanimentVoices = 3,
   } = generationSettings;
-  const { measureDurationTicks, defaultNoteType } = timingInfo;
+  const { divisions } = timingInfo; // divisions needed for note type calc
 
-  const chordRootMidi = baseChordNotes[0];
-  const chordPcs = baseChordNotes.map((n) => n % 12);
-  const fullChordNotePool = getExtendedChordNotePool(baseChordNotes);
-  let currentMeasureNotes: PreviousNotes;
-  const measureEvents: MusicalEvent[] = [];
+  const chordRootMidi = baseChordNotes[0]; // Root of the chord
+  const chordPcs = baseChordNotes.map((n) => n % 12); // Root position pitch classes
+  const fullChordNotePool = getExtendedChordNotePool(baseChordNotes); // Pool based on root pos notes
+  let currentNotes: PreviousNotes;
+  const eventNotes: MusicalEvent[] = [];
+  const noteType = getNoteTypeFromDuration(eventDurationTicks, divisions);
+
+  console.log(
+    `    Generating event (Duration: ${eventDurationTicks} ticks / Type: ${noteType})`,
+  );
 
   if (generationStyle === 'SATB') {
     const prevSATB = previousNotes as PreviousNotesSATB;
+
+    // Assign Bass first, respecting inversion
+    const bass = assignBassNoteSATB(
+      requiredBassPc, // Pass the required PC
+      chordRootMidi, // Still useful fallback target
+      fullChordNotePool,
+      prevSATB.bass,
+      melodicSmoothness,
+    );
+
+    // Assign Soprano (independent of inversion for now)
     const soprano = assignSopranoOrMelodyNote(
       fullChordNotePool,
       prevSATB.soprano,
       melodicSmoothness,
       'SATB',
     );
-    const bass = assignBassNoteSATB(
-      chordRootMidi,
-      fullChordNotePool,
-      prevSATB.bass,
-      melodicSmoothness,
-    );
+
+    // Assign Inner Voices (using the actual chosen bass note)
     const { tenorNoteMidi: tenor, altoNoteMidi: alto } = assignInnerVoicesSATB(
-      chordPcs,
+      chordPcs, // Use root position PCs for doubling rules
       fullChordNotePool,
       prevSATB.tenor,
       prevSATB.alto,
       soprano,
-      bass,
+      bass, // Pass the potentially inverted bass note
       melodicSmoothness,
       keyDetails,
     );
-    currentMeasureNotes = { soprano, alto, tenor, bass };
+
+    currentNotes = { soprano, alto, tenor, bass };
     console.log(
-      `    SATB Voicing: S=${midiToNoteName(soprano)} A=${midiToNoteName(alto)} T=${midiToNoteName(tenor)} B=${midiToNoteName(bass)}`,
+      `      SATB Voicing: S=${midiToNoteName(soprano)} A=${midiToNoteName(alto)} T=${midiToNoteName(tenor)} B=${midiToNoteName(bass)} (Req Bass PC: ${requiredBassPc})`,
     );
 
-    // Create SATB events
+    // Create SATB events for this specific duration
     const staff1Notes = [soprano, alto];
     const staff2Notes = [tenor, bass];
-    let staff1Stem: 'up' | 'down' = 'up';
-    if (soprano !== null && soprano >= 71) staff1Stem = 'down'; // Simple stem logic
-    let staff2Stem: 'up' | 'down' = 'down';
-    if (tenor !== null && tenor <= 55) staff2Stem = 'up'; // Simple stem logic
+    let staff1Stem: 'up' | 'down' =
+      soprano !== null && soprano >= 71 ? 'down' : 'up';
+    let staff2Stem: 'up' | 'down' =
+      tenor !== null && tenor <= 55 ? 'up' : 'down';
 
-    measureEvents.push(
+    eventNotes.push(
       ...createStaffEvents(
         staff1Notes,
         '1',
-        '1',
+        '1', // Voice 1 on Staff 1 (Soprano/Alto)
         staff1Stem,
-        measureDurationTicks,
-        defaultNoteType,
+        eventDurationTicks,
+        noteType,
       ),
     );
-    measureEvents.push(
+    eventNotes.push(
       ...createStaffEvents(
         staff2Notes,
         '2',
-        '2',
+        '2', // Voice 2 on Staff 2 (Tenor/Bass) - Simple 2-voice setup for now
         staff2Stem,
-        measureDurationTicks,
-        defaultNoteType,
+        eventDurationTicks,
+        noteType,
       ),
     );
   } else {
-    // MelodyAccompaniment
+    // MelodyAccompaniment Style
     const prevMA = previousNotes as PreviousNotesMelodyAccompaniment;
     const melody = assignSopranoOrMelodyNote(
       fullChordNotePool,
@@ -223,6 +284,11 @@ function generateNotesForMeasure(ctx: MeasureGenerationContext): {
       melodicSmoothness,
       'MelodyAccompaniment',
     );
+
+    // Accompaniment voicing needs the *actual* bass note if inverted
+    // However, generateAccompanimentVoicing primarily uses root/pcs/pool.
+    // We might adapt it later to prioritize the inverted bass note if needed.
+    // For now, let it generate based on root position info.
     const accompaniment = generateAccompanimentVoicing(
       melody,
       chordRootMidi,
@@ -232,46 +298,47 @@ function generateNotesForMeasure(ctx: MeasureGenerationContext): {
       melodicSmoothness,
       numAccompanimentVoices,
     );
-    currentMeasureNotes = { melody, accompaniment };
+    currentNotes = { melody, accompaniment };
     console.log(
-      `    Melody+Acc Voicing: M=${midiToNoteName(melody)} Acc=[${accompaniment.map(midiToNoteName).join(', ')}]`,
+      `      Melody+Acc Voicing: M=${midiToNoteName(melody)} Acc=[${accompaniment.map(midiToNoteName).join(', ')}]`,
     );
 
-    // Create Melody/Accompaniment events
-    let melodyStem: 'up' | 'down' = 'up';
-    if (melody !== null && melody >= 71) melodyStem = 'down';
+    // Create Melody/Accompaniment events for this duration
+    let melodyStem: 'up' | 'down' =
+      melody !== null && melody >= 71 ? 'down' : 'up';
     let accompStem: 'up' | 'down' = 'down';
     const highestAccomp = accompaniment.filter((n) => n !== null).pop();
     if (
       highestAccomp !== undefined &&
       highestAccomp !== null &&
       highestAccomp <= 55
-    )
+    ) {
       accompStem = 'up';
+    }
 
-    measureEvents.push(
+    eventNotes.push(
       ...createStaffEvents(
         [melody],
         '1',
-        '1',
+        '1', // Melody voice
         melodyStem,
-        measureDurationTicks,
-        defaultNoteType,
+        eventDurationTicks,
+        noteType,
       ),
     );
-    measureEvents.push(
+    eventNotes.push(
       ...createStaffEvents(
         accompaniment,
         '2',
-        '2',
+        '2', // Accompaniment voice(s) - treated as single voice for now
         accompStem,
-        measureDurationTicks,
-        defaultNoteType,
+        eventDurationTicks,
+        noteType,
       ),
     );
   }
 
-  return { currentMeasureNotes, measureEvents };
+  return { currentNotes, eventNotes };
 }
 
 /**
@@ -314,25 +381,20 @@ function createStaffEvents(
   return events;
 }
 
-/**
- * Generates rest events for both staves when a chord error occurs.
- */
-function generateRestEventsForMeasure(timingInfo: TimingInfo): MusicalEvent[] {
-  const { measureDurationTicks, defaultNoteType } = timingInfo;
+// generateRestEventsForMeasure (Now takes duration as argument)
+function generateRestEventsForDuration(
+  durationTicks: number,
+  noteType: string,
+  staff: '1' | '2',
+  voice: string,
+): MusicalEvent[] {
   return [
     {
       type: 'rest',
-      durationTicks: measureDurationTicks,
-      staffNumber: '1',
-      voiceNumber: '1',
-      noteType: defaultNoteType,
-    },
-    {
-      type: 'rest',
-      durationTicks: measureDurationTicks,
-      staffNumber: '2',
-      voiceNumber: '2',
-      noteType: defaultNoteType,
+      durationTicks: durationTicks,
+      staffNumber: staff,
+      voiceNumber: voice,
+      noteType: noteType,
     },
   ];
 }
@@ -359,6 +421,7 @@ function generateMusicalData(
     keySignature,
     meter,
   );
+  // Initial state *before* the first measure
   let previousNotes = initializePreviousNotes(
     generationStyle,
     numAccompanimentVoices,
@@ -367,54 +430,140 @@ function generateMusicalData(
 
   // --- Generate Measures Loop ---
   for (let measureIndex = 0; measureIndex < numMeasures; measureIndex++) {
-    const roman = chordProgression[measureIndex] ?? 'I';
-    console.log(`--- Measure ${measureIndex + 1} (${roman}) ---`);
-    const baseChordNotes = getChordNotesFromRoman(roman, keySignature);
-    let measureEvents: MusicalEvent[];
-    let currentMeasureNotes: PreviousNotes | null = null;
+    const romanWithInv = chordProgression[measureIndex] ?? 'I'; // Get the roman numeral including inversion
+    console.log(`--- Measure ${measureIndex + 1} (${romanWithInv}) ---`);
 
-    if (baseChordNotes.length === 0) {
+    const chordInfo = getChordInfoFromRoman(romanWithInv, keySignature); // Use the new function
+    let measureEvents: MusicalEvent[] = []; // Accumulate events for this measure
+    let currentMeasureNotes: PreviousNotes | null = null; // Tracks notes at the *end* of the measure
+
+    if (!chordInfo) {
       // --- Handle Chord Error ---
       console.error(
-        `Skipping measure ${measureIndex + 1}: Chord error "${roman}". Adding rests.`,
+        `Skipping measure ${measureIndex + 1}: Chord error "${romanWithInv}". Adding rests.`,
       );
-      measureEvents = generateRestEventsForMeasure(timingInfo);
-      // Reset previous notes state
+      // Add rests for the whole measure duration
+      const restType = getNoteTypeFromDuration(
+        timingInfo.measureDurationTicks,
+        timingInfo.divisions,
+      );
+      measureEvents.push(
+        ...generateRestEventsForDuration(
+          timingInfo.measureDurationTicks,
+          restType,
+          '1',
+          '1',
+        ),
+      );
+      measureEvents.push(
+        ...generateRestEventsForDuration(
+          timingInfo.measureDurationTicks,
+          restType,
+          '2',
+          '2',
+        ),
+      );
+      // Reset previous notes state for the next measure
       previousNotes = initializePreviousNotes(
         generationStyle,
         numAccompanimentVoices,
       );
+      currentMeasureNotes = { ...previousNotes }; // Store the reset state
     } else {
-      // --- Generate Notes for Valid Chord ---
-      const context: MeasureGenerationContext = {
-        baseChordNotes,
-        previousNotes,
-        generationSettings,
-        keyDetails,
-        timingInfo,
-        measureIndex, // Pass index if needed by helpers
-      };
-      const result = generateNotesForMeasure(context);
-      measureEvents = result.measureEvents;
-      currentMeasureNotes = result.currentMeasureNotes;
+      // --- Generate Rhythmic Events for Valid Chord ---
+      const { notes: baseChordNotes, requiredBassPc } = chordInfo;
+      const rhythmicPatternFactors = getRhythmicPattern(timingInfo); // e.g., [1.0, 1.0, 1.0, 1.0] for 4/4 beat = quarter
+      let currentTickInMeasure = 0;
 
-      // Check Rules and Update State
-      checkVoiceLeadingRules(
-        currentMeasureNotes,
-        previousNotes,
-        generationStyle,
-        measureIndex,
-        0, // Assuming only one event/beat per measure for now
-        dissonanceStrictness,
-      );
-      previousNotes = currentMeasureNotes;
-    }
+      // Loop through the rhythmic events defined for this measure
+      for (
+        let eventIndex = 0;
+        eventIndex < rhythmicPatternFactors.length;
+        eventIndex++
+      ) {
+        const durationFactor = rhythmicPatternFactors[eventIndex];
+        const eventDurationTicks = Math.round(
+          timingInfo.beatDurationTicks * durationFactor,
+        );
+
+        if (
+          currentTickInMeasure + eventDurationTicks >
+          timingInfo.measureDurationTicks
+        ) {
+          console.warn(
+            `Event ${eventIndex + 1} exceeds measure duration. Truncating.`,
+          );
+          // eventDurationTicks = timingInfo.measureDurationTicks - currentTickInMeasure; // Removed truncate for now
+          // Instead, just skip if duration is zero or negative
+          if (timingInfo.measureDurationTicks - currentTickInMeasure <= 0)
+            continue;
+        }
+        if (eventDurationTicks <= 0) continue; // Skip zero-duration events
+
+        // Generate notes for this specific event
+        const eventResult = generateNotesForEvent(
+          baseChordNotes,
+          requiredBassPc,
+          previousNotes, // Pass the notes from the *previous event*
+          generationSettings,
+          keyDetails,
+          timingInfo,
+          eventDurationTicks,
+        );
+
+        // Add the generated events to the measure's list
+        measureEvents.push(...eventResult.eventNotes);
+
+        // Check Rules between previous event and this one
+        // Use eventIndex as the "beatIndex" for logging/context
+        checkVoiceLeadingRules(
+          eventResult.currentNotes, // Notes generated for *this* event
+          previousNotes, // Notes from the *previous* event
+          generationStyle,
+          measureIndex,
+          eventIndex, // Pass the event index within the measure
+          dissonanceStrictness,
+        );
+
+        // Update previousNotes state for the *next* event
+        previousNotes = eventResult.currentNotes;
+        currentTickInMeasure += eventDurationTicks;
+      } // End rhythmic event loop
+
+      // Store the notes from the *last* event of the measure
+      currentMeasureNotes = previousNotes;
+
+      // Add trailing rests if the rhythm pattern didn't fill the measure
+      if (currentTickInMeasure < timingInfo.measureDurationTicks) {
+        const remainingTicks =
+          timingInfo.measureDurationTicks - currentTickInMeasure;
+        const restType = getNoteTypeFromDuration(
+          remainingTicks,
+          timingInfo.divisions,
+        );
+        console.log(`Adding trailing rest of ${remainingTicks} ticks.`);
+        measureEvents.push(
+          ...generateRestEventsForDuration(remainingTicks, restType, '1', '1'),
+        );
+        measureEvents.push(
+          ...generateRestEventsForDuration(remainingTicks, restType, '2', '2'),
+        );
+      }
+    } // End chord valid block
 
     generatedMeasures.push({
       measureNumber: measureIndex + 1,
-      romanNumeral: roman,
-      events: measureEvents,
+      romanNumeral: romanWithInv, // Store the full numeral with inversion
+      events: measureEvents, // Store all events generated for this measure
     });
+
+    // Update previousNotes to the state at the end of the measure for the start of the next measure
+    // This happens implicitly as 'previousNotes' is updated in the loop
+    if (currentMeasureNotes) {
+      previousNotes = currentMeasureNotes;
+    } else {
+      // If the measure had an error, previousNotes was already reset
+    }
   } // End measure loop
 
   // --- Construct Final Data Structure ---
@@ -446,7 +595,7 @@ function generateMusicalData(
 function createMusicXMLString(data: GeneratedPieceData): string {
   const { metadata, measures } = data;
 
-  // --- Key, Meter, Fifths Calculation ---
+  // --- Key, Meter, Fifths Calculation --- (Similar to before)
   const keyDetails =
     Tonal.Key.majorKey(metadata.keySignature) ??
     Tonal.Key.minorKey(metadata.keySignature);
@@ -455,7 +604,7 @@ function createMusicXMLString(data: GeneratedPieceData): string {
       'Internal Error: Invalid key signature in metadata: ' +
         metadata.keySignature,
     );
-  const keyFifths = getFifths(keyDetails.tonic); // Use helper below
+  const keyFifths = getFifths(keyDetails.tonic);
   const keyMode = keyDetails.type === 'major' ? 'major' : 'minor';
 
   const meterMatch = metadata.meter.match(/^(\d+)\/(\d+)$/);
@@ -467,16 +616,17 @@ function createMusicXMLString(data: GeneratedPieceData): string {
   const meterBeats = parseInt(beatsStr, 10);
   const beatValue = parseInt(beatValueStr, 10);
 
-  const divisions = 4; // Standard divisions per quarter note - should match generation
+  // Use a consistent divisions value (e.g., 4 or higher for smaller notes)
+  const divisions = 4; // Divisions per quarter note - MUST match generation calculations
 
-  // --- MusicXML Document Setup ---
+  // --- MusicXML Document Setup --- (Similar to before)
   const root = create({ version: '1.0', encoding: 'UTF-8' })
     .dtd({
       pubID: '-//Recordare//DTD MusicXML 4.0 Partwise//EN',
       sysID: 'http://www.musicxml.org/dtds/partwise.dtd',
     })
     .ele('score-partwise', { version: '4.0' });
-
+  // ... (work title, identification, part-list - same as before) ...
   root.ele('work').ele('work-title').txt(metadata.title).up().up();
   root
     .ele('identification')
@@ -507,10 +657,10 @@ function createMusicXMLString(data: GeneratedPieceData): string {
       number: `${measureData.measureNumber}`,
     });
 
-    // Add Attributes in First Measure
+    // Add Attributes in First Measure (Similar to before)
     if (measureIndex === 0) {
       const attributes = measureBuilder.ele('attributes');
-      attributes.ele('divisions').txt(`${divisions}`).up();
+      attributes.ele('divisions').txt(`${divisions}`).up(); // Use consistent divisions
       attributes
         .ele('key')
         .ele('fifths')
@@ -529,7 +679,7 @@ function createMusicXMLString(data: GeneratedPieceData): string {
         .txt(`${beatValue}`)
         .up()
         .up();
-      attributes.ele('staves').txt('2').up(); // Assuming 2 staves always for now
+      attributes.ele('staves').txt('2').up();
       attributes
         .ele('clef', { number: '1' })
         .ele('sign')
@@ -548,54 +698,97 @@ function createMusicXMLString(data: GeneratedPieceData): string {
         .txt('4')
         .up()
         .up();
-      attributes.up();
+      attributes.up(); // attributes
     }
 
-    // Add Harmony (Roman Numeral as text) - Optional visual aid
+    // Add Harmony (Roman Numeral) - Use the full numeral now
     measureBuilder
       .ele('harmony')
+      // Could try to parse root/kind, but 'other' with text is safer for complex numerals
       .ele('root')
       .ele('root-step')
       .up()
-      .up() // Placeholder root, Tonal doesn't easily give root letter from Roman
+      .up() // Placeholder
       .ele('kind')
       .txt('other')
       .att('text', measureData.romanNumeral)
-      .up()
-      .up();
+      .up() // Use stored roman numeral
+      .up(); // harmony
 
     // --- Process Musical Events for the Measure ---
-    // Group events by staff and voice, then add with backup/forward
-    const staff1Voice1Events = measureData.events.filter(
-      (e) => e.staffNumber === '1' && e.voiceNumber === '1',
+    // Group events by staff and voice
+    // Assuming Voice 1 = Staff 1 (S/Melody), Voice 2 = Staff 2 (T/Accomp) for now
+    const voice1Events = measureData.events.filter(
+      (e) => e.voiceNumber === '1',
     );
-    const staff2Voice2Events = measureData.events.filter(
-      (e) => e.staffNumber === '2' && e.voiceNumber === '2',
+    const voice2Events = measureData.events.filter(
+      (e) => e.voiceNumber === '2',
     );
 
-    // Add Staff 1 events
-    if (staff1Voice1Events.length > 0) {
-      addMusicalEventsToXML(measureBuilder, staff1Voice1Events);
+    // Add Voice 1 events
+    if (voice1Events.length > 0) {
+      addMusicalEventsToXML(measureBuilder, voice1Events);
+    } else {
+      // Add full measure rest for voice 1 if no events exist (shouldn't happen if generation logic is correct)
+      console.warn(
+        `Measure ${measureData.measureNumber}: No events found for Voice 1.`,
+      );
+      const measureDurationTicks = meterBeats * divisions * (4 / beatValue);
+      const restType = getNoteTypeFromDuration(measureDurationTicks, divisions);
+      addMusicalEventsToXML(measureBuilder, [
+        {
+          type: 'rest',
+          durationTicks: measureDurationTicks,
+          staffNumber: '1',
+          voiceNumber: '1',
+          noteType: restType,
+        },
+      ]);
     }
 
-    // Backup if Staff 2 has events
-    const measureDurationTicks = meterBeats * divisions * (4 / beatValue);
-    if (staff2Voice2Events.length > 0) {
+    // Backup before adding Voice 2 events
+    const totalVoice1Duration = voice1Events.reduce(
+      (sum, ev) => sum + ev.durationTicks,
+      0,
+    );
+    if (voice2Events.length > 0) {
       measureBuilder
         .ele('backup')
         .ele('duration')
-        .txt(`${measureDurationTicks}`) // Assuming full measure backup needed
+        .txt(`${totalVoice1Duration}`) // Backup by the total duration of voice 1
         .up()
         .up();
 
-      // Add Staff 2 events
-      addMusicalEventsToXML(measureBuilder, staff2Voice2Events);
+      // Add Voice 2 events
+      addMusicalEventsToXML(measureBuilder, voice2Events);
+    } else {
+      // Add full measure rest for voice 2 if no events exist
+      console.warn(
+        `Measure ${measureData.measureNumber}: No events found for Voice 2.`,
+      );
+      const measureDurationTicks = meterBeats * divisions * (4 / beatValue);
+      const restType = getNoteTypeFromDuration(measureDurationTicks, divisions);
+      measureBuilder
+        .ele('backup')
+        .ele('duration')
+        .txt(`${totalVoice1Duration}`)
+        .up() // Backup first
+        .up();
+      addMusicalEventsToXML(measureBuilder, [
+        {
+          type: 'rest',
+          durationTicks: measureDurationTicks,
+          staffNumber: '2',
+          voiceNumber: '2',
+          noteType: restType,
+        },
+      ]);
     }
 
-    measureBuilder.up(); // End measure element
-  }); // End measures loop
+    measureBuilder.up(); // measure
+  }); // measures.forEach
 
-  partBuilder.up(); // End part element
+  partBuilder.up(); // part
   return root.end({ prettyPrint: true });
 }
 
@@ -604,16 +797,18 @@ function addMusicalEventsToXML(
   measureBuilder: XMLBuilder,
   events: MusicalEvent[],
 ): void {
-  // Keep track of current tick position if handling complex rhythms
-  // let currentTick = 0;
-
+  // No need for currentTick tracking here if events are sequential per voice
   events.forEach((event) => {
-    // Add <forward> or <backup> here if handling complex rhythms within a voice
-
+    // console.log("Adding event to XML:", event); // Debugging
     const noteEl = measureBuilder.ele('note');
 
     if (event.type === 'rest') {
       noteEl.ele('rest').up();
+      // Optionally add measure="yes" attribute for whole rests
+      // if (event.durationTicks === measureDurationTicks) { // Need measureDurationTicks here
+      //     noteEl.down().attr('measure', 'yes');
+      //     noteEl.up();
+      // }
     } else if (
       event.type === 'note' &&
       event.midi !== null &&
@@ -642,10 +837,9 @@ function addMusicalEventsToXML(
       if (event.stemDirection) {
         noteEl.ele('stem').txt(event.stemDirection).up();
       }
-      // Type is added only if not a chord element or handled differently
-      if (!event.isChordElement) {
-        noteEl.ele('type').txt(event.noteType).up();
-      }
+      // Always add type for notes unless it's part of a chord *and* we want it handled differently
+      // Standard practice is to include type even for chord elements
+      noteEl.ele('type').txt(event.noteType).up();
     } else {
       console.warn(
         `Invalid event type or missing MIDI for note event. Skipping.`,
@@ -659,10 +853,10 @@ function addMusicalEventsToXML(
     noteEl.ele('duration').txt(`${event.durationTicks}`).up();
     noteEl.ele('voice').txt(event.voiceNumber).up();
     noteEl.ele('staff').txt(event.staffNumber).up();
-    noteEl.up(); // note
 
-    // Update currentTick if needed
-    // currentTick += event.durationTicks;
+    // TODO: Add notations like ties, slurs, dots later if needed
+
+    noteEl.up(); // note
   });
 }
 
