@@ -1,4 +1,5 @@
 import Fraction from 'fraction.js';
+import { getChordInfoFromRoman } from './harmonyUtils';
 
 // returns object with melody and accompaniment
 export default function generateMA(
@@ -13,7 +14,7 @@ function generateMelody(progression: string[], key: string, meter: string) {
   const rhythm = generateRhythm(meter, 1);
   const numofNotesInBar = rhythm.length;
 
-  
+  console.log(getChordInfoFromRoman(progression[0], key));
 }
 
 type NoteValuesMap = Record<number, Fraction>;
