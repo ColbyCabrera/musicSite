@@ -32,6 +32,12 @@ import {
   getNoteTypeFromDuration, // Keep MusicXML helpers
 } from './musicxmlUtils';
 
+// Add at the file level, before the functions
+interface MelodicState {
+  lastDirection: number; // -1: down, 0: repeat, 1: up
+  directionStreak: number; // How many times we've moved in the same direction
+}
+
 // --- Orchestrator Function --- (Unchanged)
 /**
  * Generates the voice data as a MusicXML string.
@@ -262,6 +268,7 @@ function getRhythmicPattern(
  * @param keyDetails - Key information.
  * @param timingInfo - Timing information.
  * @param eventDurationTicks - The duration for *this specific event* in ticks.
+ * @param melodicState - Optional melodic state parameter for tracking melody direction.
  * @returns { currentNotes: PreviousNotes; eventNotes: MusicalEvent[] } - The notes chosen for this event and the corresponding MusicXML events.
  */
 function generateNotesForEvent(
@@ -272,6 +279,7 @@ function generateNotesForEvent(
   keyDetails: KeyDetails,
   timingInfo: TimingInfo,
   eventDurationTicks: number,
+  melodicState?: MelodicState, // Add optional melodic state parameter
 ): { currentNotes: PreviousNotes; eventNotes: MusicalEvent[] } {
   const {
     melodicSmoothness,
@@ -284,8 +292,8 @@ function generateNotesForEvent(
   const chordPcs = baseChordNotes.map((n) => n % 12);
   const fullChordNotePool = getExtendedChordNotePool(baseChordNotes);
   let currentNotes: PreviousNotes;
-  const eventNotes: MusicalEvent[] = []; // Holds ALL events generated for this logical duration
-  const eventNoteType = getNoteTypeFromDuration(eventDurationTicks, divisions); // Type for the *whole* event duration
+  const eventNotes: MusicalEvent[] = [];
+  const eventNoteType = getNoteTypeFromDuration(eventDurationTicks, divisions);
 
   console.log(
     `    Generating event (Duration: ${eventDurationTicks} ticks / Type: ${eventNoteType})`,
@@ -358,6 +366,8 @@ function generateNotesForEvent(
       prevMA.melody,
       melodicSmoothness,
       'MelodyAccompaniment',
+      keyDetails.tonic, // Pass the key signature here
+      melodicState // Pass the melodic state
     );
     let melodyStem: 'up' | 'down' =
       melody !== null && melody >= 71 ? 'down' : 'up';
@@ -570,21 +580,26 @@ function generateMusicalData(
     keySignature,
     meter,
   );
-  // Initial state *before* the first measure
   let previousNotes = initializePreviousNotes(
     generationStyle,
     numAccompanimentVoices,
   );
   const generatedMeasures: MeasureData[] = [];
 
+  // Initialize melodic state
+  const melodicState: MelodicState = {
+    lastDirection: 0,
+    directionStreak: 0,
+  };
+
   // --- Generate Measures Loop ---
   for (let measureIndex = 0; measureIndex < numMeasures; measureIndex++) {
-    const romanWithInv = chordProgression[measureIndex] ?? 'I'; // Get the roman numeral including inversion
+    const romanWithInv = chordProgression[measureIndex] ?? 'I';
     console.log(`--- Measure ${measureIndex + 1} (${romanWithInv}) ---`);
 
-    const chordInfo = getChordInfoFromRoman(romanWithInv, keySignature); // Use the new function
-    let measureEvents: MusicalEvent[] = []; // Accumulate events for this measure
-    let currentMeasureNotes: PreviousNotes | null = null; // Tracks notes at the *end* of the measure
+    const chordInfo = getChordInfoFromRoman(romanWithInv, keySignature);
+    let measureEvents: MusicalEvent[] = [];
+    let currentMeasureNotes: PreviousNotes | null = null;
 
     if (!chordInfo) {
       // --- Handle Chord Error ---
@@ -658,6 +673,7 @@ function generateMusicalData(
           keyDetails,
           timingInfo,
           eventDurationTicks,
+          melodicState, // Pass the melodic state
         );
 
         // Add the generated events to the measure's list

@@ -79,44 +79,62 @@ export function generateAccompanimentVoicing(
         9, // Bass leap threshold
     );
 
-    if (lowestNote !== null) {
-        accompanimentNotes.push(lowestNote);
-        remainingPcs.delete(lowestNote % 12);
-        currentAvailableNotes = currentAvailableNotes.filter((n) => n > lowestNote!); // Remove chosen and below
-    } else {
-        console.error('Accompaniment: Failed to assign lowest note.');
+    if (lowestNote === null) {
+        console.warn('Accompaniment: Could not assign bass note. Using fallback.');
         return Array(numVoices).fill(null);
     }
 
-    // --- 2. Assign Remaining Voices ---
-    for (let i = 1; i < numVoices; i++) {
-        if (currentAvailableNotes.length === 0) {
-            console.warn(`Accompaniment: Ran out of notes after ${accompanimentNotes.length} voice(s).`);
-            accompanimentNotes.push(null);
-            continue;
-        }
+    accompanimentNotes.push(lowestNote);
+    remainingPcs.delete(lowestNote % 12);
 
-        const previousNote = previousAccompanimentNotes[i] ?? previousAccompanimentNotes[i-1] ?? lowestNote;
-        const targetMidi = previousNote !== null ? previousNote : lowestNote! + 7; // Target near prev or ~P5 above lowest
+    // --- 2. Assign Upper Notes ---
+    // Filter available notes that would create spans larger than an octave from lowest note
+    currentAvailableNotes = currentAvailableNotes.filter(n => n > lowestNote! && n <= lowestNote! + 12);
 
-        const neededPcNotes = currentAvailableNotes.filter((n) => remainingPcs.has(n % 12));
-        let candidates: number[] = (neededPcNotes.length > 0) ? neededPcNotes : currentAvailableNotes;
+    let upperNotesAssigned = 0;
+    const maxOctaveSpan = 12; // Maximum span of one octave in semitones
 
-        const chosenNote = findClosestNote(targetMidi, candidates, previousNote, smoothness, 7);
+    while (accompanimentNotes.length < numVoices && currentAvailableNotes.length > 0) {
+        let targetMidi: number;
+        const prevAccompNote = previousAccompanimentNotes[accompanimentNotes.length];
 
-        if (chosenNote !== null) {
-            accompanimentNotes.push(chosenNote);
-            remainingPcs.delete(chosenNote % 12);
-            currentAvailableNotes = currentAvailableNotes.filter((n) => n > chosenNote); // Remove chosen and potentially notes below
+        if (prevAccompNote !== null) {
+            targetMidi = prevAccompNote;
         } else {
-            console.warn(`Accompaniment: Failed to assign voice ${i + 1}.`);
-            accompanimentNotes.push(null);
+            // If no previous note, aim for a balanced voicing within the octave span
+            const span = maxOctaveSpan;
+            const spacing = span / (numVoices - 1);
+            targetMidi = lowestNote + Math.round(spacing * upperNotesAssigned);
         }
+
+        // Find closest note that maintains the octave limit
+        const validCandidates = currentAvailableNotes.filter(n =>
+            n >= lowestNote! && // Must be above bass
+            n <= lowestNote! + maxOctaveSpan // Must be within octave span
+        );
+
+        if (validCandidates.length === 0) break;
+
+        const nextNote = findClosestNote(
+            targetMidi,
+            validCandidates,
+            prevAccompNote,
+            smoothness,
+            6, // Smaller leap threshold for inner voices
+        );
+
+        if (nextNote === null) break;
+
+        accompanimentNotes.push(nextNote);
+        currentAvailableNotes = currentAvailableNotes.filter(n => n !== nextNote);
+        remainingPcs.delete(nextNote % 12);
+        upperNotesAssigned++;
     }
 
-    while (accompanimentNotes.length < numVoices) { // Pad if needed
+    // Fill remaining positions with nulls if needed
+    while (accompanimentNotes.length < numVoices) {
         accompanimentNotes.push(null);
     }
 
-    return accompanimentNotes.sort((a, b) => (a ?? -1) - (b ?? -1)); // Sort low to high
+    return accompanimentNotes;
 }

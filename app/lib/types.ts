@@ -37,6 +37,12 @@ export interface PreviousNotesMelodyAccompaniment {
 /** Union type for state tracking during generation */
 export type PreviousNotes = PreviousNotesSATB | PreviousNotesMelodyAccompaniment;
 
+/** State tracking for melodic direction and patterns */
+export interface MelodicState {
+    lastDirection: number;  // -1: down, 0: repeat/start, 1: up
+    directionStreak: number; // How many times we've moved in the same direction
+}
+
 /** Musical event within a measure for XML generation */
 export interface MusicalEvent {
   type: 'note' | 'rest';
