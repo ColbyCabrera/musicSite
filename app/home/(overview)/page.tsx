@@ -29,6 +29,7 @@ import {
 import { GenerationSettings } from '@/app/lib/types';
 import { generateChordProgression } from '@/app/lib/progression';
 import { generateVoices } from '@/app/lib/generate';
+import generateMA from '@/app/lib/generateMA';
 
 // --- Helper Data ---
 const commonKeys = [
@@ -132,6 +133,52 @@ export default function Page() {
           settings, // Pass the updated settings object
         );
         setGeneratedMusicXml(musicXml);
+      } catch (err) {
+        console.error('Generation failed:', err);
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'An unknown error occurred during generation.',
+        );
+        setGeneratedProgression(null); // Clear progression on error too
+      } finally {
+        setIsLoading(false);
+      }
+    }, 10); // Short delay
+  };
+
+  const handleGenerateMA = () => {
+    setIsLoading(true);
+    setError(null);
+    setGeneratedProgression(null);
+    setGeneratedMusicXml(null);
+
+    // Basic validation
+    if (numMeasures <= 0) {
+      setError('Number of measures must be greater than 0.');
+      setIsLoading(false);
+      return;
+    }
+
+    // Use setTimeout to allow UI to update before potentially blocking generation
+    setTimeout(() => {
+      try {
+        const settings: GenerationSettings = {
+          melodicSmoothness,
+          dissonanceStrictness,
+          harmonicComplexity,
+          generationStyle,
+        };
+
+        // 1. Generate Progression
+        const progression = generateChordProgression(
+          keySignature,
+          numMeasures,
+          harmonicComplexity,
+        );
+        setGeneratedProgression(progression);
+
+        generateMA(progression, keySignature, meter);
       } catch (err) {
         console.error('Generation failed:', err);
         setError(
@@ -337,6 +384,21 @@ export default function Page() {
               </>
             ) : (
               'Generate Music'
+            )}
+          </Button>
+
+          <Button
+            onClick={handleGenerateMA}
+            disabled={isLoading}
+            className="w-full md:w-auto"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              'Generate MusicMA'
             )}
           </Button>
 
