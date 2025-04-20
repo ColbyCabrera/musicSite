@@ -1,4 +1,5 @@
 // src/types.ts
+import * as Tonal from 'tonal';
 
 /** Structure for MusicXML pitch representation */
 export interface MusicXMLPitch {
@@ -66,4 +67,24 @@ export interface GeneratedPieceData {
     generationStyle: GenerationSettings['generationStyle'];
   };
   measures: MeasureData[];
+}
+
+export type KeyDetails = Tonal.Key.Key; // Or define your own interface based on Tonal.Key.Key properties
+
+export interface TimingInfo {
+  meterBeats: number;
+  beatValue: number;
+  divisions: number;
+  beatDurationTicks: number;
+  measureDurationTicks: number;
+  defaultNoteType: string;
+}
+
+export interface MeasureGenerationContext {
+  baseChordNotes: number[];
+  previousNotes: PreviousNotes;
+  generationSettings: GenerationSettings;
+  keyDetails: KeyDetails;
+  timingInfo: TimingInfo;
+  measureIndex: number; // Optional: If needed by helper functions
 }
