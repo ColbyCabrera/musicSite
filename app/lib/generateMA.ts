@@ -27,86 +27,33 @@ function generateMelody(progression: string[], key: string, meter: string) {
       melody.push({ note: startingNote, rhythm: rhythm.shift() ?? 0 });
 
     rhythm.forEach((noteLength, j) => {
-      const lastNote = melody[melody.length - 1].note;
+      const lastNote = Note.get(melody[melody.length - 1].note);
+      let diatonicNotes = [];
+
+      for (let i = -7; i <= 7; i++) {
+        diatonicNotes.push(
+          transposeDiatonicallyBySteps(
+            lastNote.name,
+            i,
+            `${keyObj.tonic} ${keyObj.type}`,
+          ),
+        );
+      }
+
       const possibleNotes = weightedRandomChoice([
-        { item: chordInfo?.noteNames, weight: 2 },
         {
-          item: [
-            transposeDiatonicallyBySteps(
-              lastNote,
-              -7,
-              `${keyObj.tonic} ${keyObj.type}`,
-            ),
-            transposeDiatonicallyBySteps(
-              lastNote,
-              -6,
-              `${keyObj.tonic} ${keyObj.type}`,
-            ),
-            transposeDiatonicallyBySteps(
-              lastNote,
-              -5,
-              `${keyObj.tonic} ${keyObj.type}`,
-            ),
-            transposeDiatonicallyBySteps(
-              lastNote,
-              -4,
-              `${keyObj.tonic} ${keyObj.type}`,
-            ),
-            transposeDiatonicallyBySteps(
-              lastNote,
-              -3,
-              `${keyObj.tonic} ${keyObj.type}`,
-            ),
-            transposeDiatonicallyBySteps(
-              lastNote,
-              -2,
-              `${keyObj.tonic} ${keyObj.type}`,
-            ),
-            transposeDiatonicallyBySteps(
-              lastNote,
-              -1,
-              `${keyObj.tonic} ${keyObj.type}`,
-            ),
-            lastNote,
-            transposeDiatonicallyBySteps(
-              lastNote,
-              1,
-              `${keyObj.tonic} ${keyObj.type}`,
-            ),
-            transposeDiatonicallyBySteps(
-              lastNote,
-              2,
-              `${keyObj.tonic} ${keyObj.type}`,
-            ),
-            transposeDiatonicallyBySteps(
-              lastNote,
-              3,
-              `${keyObj.tonic} ${keyObj.type}`,
-            ),
-            transposeDiatonicallyBySteps(
-              lastNote,
-              4,
-              `${keyObj.tonic} ${keyObj.type}`,
-            ),
-            transposeDiatonicallyBySteps(
-              lastNote,
-              5,
-              `${keyObj.tonic} ${keyObj.type}`,
-            ),
-            transposeDiatonicallyBySteps(
-              lastNote,
-              6,
-              `${keyObj.tonic} ${keyObj.type}`,
-            ),
-            transposeDiatonicallyBySteps(
-              lastNote,
-              7,
-              `${keyObj.tonic} ${keyObj.type}`,
-            ),
-          ],
+          item: chordInfo?.noteNames.map(
+            (noteName) => Note.get(noteName).letter + lastNote.oct, // Proper none name, ex. C4, D4, etc.
+          ),
+          weight: 2,
+        },
+        {
+          item: diatonicNotes,
           weight: 1,
         },
       ]) as string[];
+
+      console.log(possibleNotes);
 
       melody.push({
         note: getNextNote(melody, key, possibleNotes),
