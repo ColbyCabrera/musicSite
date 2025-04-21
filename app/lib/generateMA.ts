@@ -31,8 +31,6 @@ function generateMelody(progression: string[], key: string, meter: string) {
         { item: Key.majorKey('C').scale, weight: 1 },
       ]) as string[];
 
-      const randomIndex = Math.floor(Math.random() * possibleNotes.length);
-
       melody.push({
         note: getNextNote(melody, key, possibleNotes),
         rhythm: noteLength,
