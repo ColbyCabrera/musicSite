@@ -63,6 +63,7 @@ function generateMelody(progression: string[], key: string, meter: string) {
   });
 
   console.log('melody', melody);
+  return melody;
 }
 
 function getNextNote(
