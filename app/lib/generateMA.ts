@@ -1,6 +1,6 @@
 import Fraction from 'fraction.js';
 import { getChordInfoFromRoman } from './harmonyUtils';
-import { Key } from 'tonal';
+import { Interval, Key } from 'tonal';
 
 // returns object with melody and accompaniment
 export default function generateMA(
@@ -11,13 +11,18 @@ export default function generateMA(
   generateMelody(progression, key, meter);
 }
 
+type Melody = { note: string; rhythm: number }[];
+
 // TODO: Make it so that melody is follows counterpoint rules
 function generateMelody(progression: string[], key: string, meter: string) {
-  const melody: { note: string; rhythm: number }[] = [];
+  const melody: Melody = [];
+  const startingNote = Key.majorKey(key).scale[0] + 4; // C4
 
   progression.forEach((chord, i) => {
     const chordInfo = getChordInfoFromRoman(chord, key);
     const rhythm = generateRhythm(meter, 1);
+    if (i === 0)
+      melody.push({ note: startingNote, rhythm: rhythm.shift() ?? 0 });
 
     rhythm.forEach((noteLength, j) => {
       const possibleNotes = weightedRandomChoice([
@@ -32,6 +37,20 @@ function generateMelody(progression: string[], key: string, meter: string) {
   });
 
   console.log('melody', melody);
+}
+
+function getNextNote(currentMelody: Melody, possibleNotes: string[]) {
+  const lastNote = currentMelody[currentMelody.length - 1].note;
+  const noteBeforeLast = currentMelody[currentMelody.length - 2]?.note;
+  if (isLeap(lastNote, noteBeforeLast)) {
+  }
+}
+
+function isLeap(firstNote: string, secondNote: string) {
+  const interval = Interval.distance(firstNote, secondNote);
+  const intervalDistance = Interval.num(interval);
+
+  return intervalDistance > 2; // Greater than a major second is considered a leap
 }
 
 type NoteValuesMap = Record<number, Fraction>;
