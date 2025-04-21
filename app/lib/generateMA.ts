@@ -9,7 +9,7 @@ export default function generateMA(
   key: string,
   meter: string,
 ) {
-  generateMelody(progression, key, meter);
+  return generateMelody(progression, key, meter);
 }
 
 type Melody = { note: string; rhythm: number }[];

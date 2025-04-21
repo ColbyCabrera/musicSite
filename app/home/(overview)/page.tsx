@@ -30,6 +30,7 @@ import { GenerationSettings } from '@/app/lib/types';
 import { generateChordProgression } from '@/app/lib/progression';
 import { generateVoices } from '@/app/lib/generate';
 import generateMA from '@/app/lib/generateMA';
+import { melodyToMusicXML } from '@/app/lib/toMusicXml';
 
 // --- Helper Data ---
 const commonKeys = [
@@ -178,7 +179,8 @@ export default function Page() {
         );
         setGeneratedProgression(progression);
 
-        generateMA(progression, keySignature, meter);
+        const melody = generateMA(progression, keySignature, meter);
+        setGeneratedMusicXml(melodyToMusicXML(melody));
       } catch (err) {
         console.error('Generation failed:', err);
         setError(
