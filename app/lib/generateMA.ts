@@ -75,6 +75,88 @@ function getStepDown(note: string, key: string) {
   return Note.transpose(lastNote.name, `-${interval}`);
 }
 
+/**
+ * Transposes a note by a given number of diatonic steps within a specified scale.
+ * Assumes the input note's pitch class exists within the scale.
+ * Defaults to the C Major scale.
+ *
+ * @param {string} noteName - The starting note in scientific pitch notation (e.g., "C4", "B3").
+ * @param {number} intervalQuantity - The number of diatonic steps to move.
+ * Positive for up, negative for down, 0 for no change.
+ * e.g., +1 (up a step), -1 (down a step), +2 (up a third), +7 (up an octave).
+ * @param {string} [scaleName='C major'] - The name of the scale to use (e.g., "C major", "G harmonic minor").
+ * @returns {string|null} The resulting note name (e.g., "D4", "A3", "B4"),
+ * or null if the input note or scale is invalid or the note's pitch class isn't in the scale.
+ */
+function transposeDiatonicallyBySteps(
+  noteName: string,
+  intervalQuantity: number,
+  scaleName = 'C major',
+) {
+  // Validate interval quantity
+  if (
+    typeof intervalQuantity !== 'number' ||
+    !Number.isInteger(intervalQuantity)
+  ) {
+    console.error(
+      'Invalid interval quantity:',
+      intervalQuantity,
+      '(must be an integer)',
+    );
+    return null;
+  }
+
+  // Validate and parse the input note
+  const startNote = Note.get(noteName);
+  if (!startNote || !startNote.pc || startNote.oct === undefined) {
+    console.error('Invalid input note:', noteName);
+    return null;
+  }
+
+  // Get the notes of the specified scale
+  const scale = Scale.get(scaleName);
+  if (!scale || !scale.notes || scale.notes.length === 0) {
+    console.error('Invalid scale name or empty scale:', scaleName);
+    return null;
+  }
+  const scaleNotes = scale.notes; // e.g., ['C', 'D', 'E', 'F', 'G', 'A', 'B'] for C major
+  const scaleSize = scaleNotes.length;
+
+  // Find the index of the starting note's pitch class in the scale
+  const pcIndex = scaleNotes.indexOf(startNote.pc);
+  if (pcIndex === -1) {
+    console.error(
+      `Pitch class ${startNote.pc} not found in scale ${scaleName}`,
+    );
+    return null; // Pitch class not diatonic to the scale
+  }
+
+  // Calculate the target index in the scale notes array
+  // Handles positive/negative intervalQuantity and wrapping around the scale
+  const targetPcIndex =
+    (pcIndex + (intervalQuantity % scaleSize) + scaleSize) % scaleSize;
+
+  // Get the target pitch class
+  const targetPc = scaleNotes[targetPcIndex];
+
+  // Calculate the change in octaves based on how many times we wrapped around the scale
+  const octaveChange = Math.floor((pcIndex + intervalQuantity) / scaleSize);
+
+  // Calculate the target octave
+  const targetOctave = startNote.oct + octaveChange;
+
+  // Construct the final note name
+  const resultNote = targetPc + targetOctave;
+
+  // Validate the result note (optional, but good practice)
+  if (!Note.get(resultNote).name) {
+    console.error('Failed to construct valid result note:', resultNote);
+    return null;
+  }
+
+  return resultNote;
+}
+
 type NoteValuesMap = Record<number, Fraction>;
 
 /**
