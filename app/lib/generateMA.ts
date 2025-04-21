@@ -71,11 +71,9 @@ function isLeap(firstNote: string, secondNote: string) {
 function getStepDown(note: string, key: string) {
   const lastNote = Note.get(note);
   const scale = Key.majorKey(key).scale;
-  const stepDown = scale.slice(
-    scale.indexOf(lastNote.letter) - 1,
-    scale.indexOf(lastNote.letter),
-  )[0];
-  const interval = Note.distance(stepDown, lastNote.letter);
+  const stepDownLetter = scale.slice(scale.indexOf(lastNote.letter) - 1)[0];
+  const interval = Note.distance(stepDownLetter, lastNote.letter);
+
   return Note.transpose(lastNote.name, `-${interval}`);
 }
 
