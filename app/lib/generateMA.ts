@@ -1,6 +1,7 @@
 import Fraction from 'fraction.js';
 import { getChordInfoFromRoman } from './harmonyUtils';
-import { Interval, Key } from 'tonal';
+import { Interval, Key, Note } from 'tonal';
+import { get } from 'http';
 
 // returns object with melody and accompaniment
 export default function generateMA(
@@ -16,7 +17,7 @@ type Melody = { note: string; rhythm: number }[];
 // TODO: Make it so that melody is follows counterpoint rules
 function generateMelody(progression: string[], key: string, meter: string) {
   const melody: Melody = [];
-  const startingNote = Key.majorKey(key).scale[0] + 4; // C4
+  const startingNote = Key.majorKey(key).scale[0] + 4; // eg. C4
 
   progression.forEach((chord, i) => {
     const chordInfo = getChordInfoFromRoman(chord, key);
@@ -32,17 +33,31 @@ function generateMelody(progression: string[], key: string, meter: string) {
 
       const randomIndex = Math.floor(Math.random() * possibleNotes.length);
 
-      melody.push({ note: possibleNotes[randomIndex], rhythm: noteLength });
+      melody.push({
+        note: getNextNote(melody, key, possibleNotes),
+        rhythm: noteLength,
+      });
     });
   });
 
   console.log('melody', melody);
 }
 
-function getNextNote(currentMelody: Melody, possibleNotes: string[]) {
-  const lastNote = currentMelody[currentMelody.length - 1].note;
-  const noteBeforeLast = currentMelody[currentMelody.length - 2]?.note;
-  if (isLeap(lastNote, noteBeforeLast)) {
+function getNextNote(
+  currentMelody: Melody,
+  key: string,
+  possibleNotes: string[],
+) {
+  const lastNote = Note.get(currentMelody[currentMelody.length - 1].note);
+  const noteBeforeLast = Note.get(
+    currentMelody[currentMelody.length - 2]?.note,
+  );
+  if (isLeap(lastNote.name, noteBeforeLast.name)) {
+    return getStepDown(lastNote.name, key);
+  } else {
+    const randomIndex = Math.floor(Math.random() * possibleNotes.length);
+
+    return possibleNotes[randomIndex];
   }
 }
 
@@ -51,6 +66,17 @@ function isLeap(firstNote: string, secondNote: string) {
   const intervalDistance = Interval.num(interval);
 
   return intervalDistance > 2; // Greater than a major second is considered a leap
+}
+
+function getStepDown(note: string, key: string) {
+  const lastNote = Note.get(note);
+  const scale = Key.majorKey(key).scale;
+  const stepDown = scale.slice(
+    scale.indexOf(lastNote.letter) - 1,
+    scale.indexOf(lastNote.letter),
+  )[0];
+  const interval = Note.distance(stepDown, lastNote.letter);
+  return Note.transpose(lastNote.name, `-${interval}`);
 }
 
 type NoteValuesMap = Record<number, Fraction>;
