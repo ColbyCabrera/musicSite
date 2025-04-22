@@ -41,7 +41,7 @@ function generateMelody(progression: string[], key: string, meter: string) {
       const possibleNotes = weightedRandomChoice([
         {
           item: chordInfo?.noteNames.map(
-            (noteName) => Note.get(noteName).letter + lastNote.oct, // Proper none name, ex. C4, D4, etc.
+            (noteName) => Note.get(noteName).letter + lastNote.oct, // Proper note name, ex. C4, D4, etc.
           ),
           weight: 2,
         },
