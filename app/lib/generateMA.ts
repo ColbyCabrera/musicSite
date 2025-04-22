@@ -76,7 +76,9 @@ function getNextNote(
     currentMelody[currentMelody.length - 2]?.note,
   );
   if (isLeap(lastNote.name, noteBeforeLast.name)) {
-    return getStepDown(lastNote.name, key);
+    return getIntervalDirection(noteBeforeLast.name, lastNote.name) === 'asc'
+      ? getStepDown(lastNote.name, key)
+      : getStepUp(lastNote.name, key);
   } else {
     const randomIndex = Math.floor(Math.random() * possibleNotes.length);
 
