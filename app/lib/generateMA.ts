@@ -91,6 +91,22 @@ function isLeap(firstNote: string, secondNote: string) {
   return intervalDistance > 2; // Greater than a major second is considered a leap
 }
 
+function getStepUp(note: string, key: string) {
+  const currNote = Note.get(note);
+  const scale = Key.majorKey(key).scale;
+  const currentIndex = scale.indexOf(currNote.letter);
+
+  // Get the next note in the scale, wrapping around if necessary.
+  const nextIndex = (currentIndex + 1) % scale.length;
+  const stepUpLetter = scale[nextIndex];
+
+  // Calculate the interval between the current note and the target note in the scale.
+  const interval = Note.distance(currNote.letter, stepUpLetter);
+
+  // Transpose the note upward by the determined interval.
+  return Note.transpose(currNote.name, interval);
+}
+
 function getStepDown(note: string, key: string) {
   const currNote = Note.get(note);
   const scale = Key.majorKey(key).scale;
