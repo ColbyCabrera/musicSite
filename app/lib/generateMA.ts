@@ -98,7 +98,7 @@ function isLeap(firstNote: string, secondNote: string) {
   const interval = Interval.distance(firstNote, secondNote);
   const intervalDistance = Interval.num(interval);
 
-  return intervalDistance > 2; // Greater than a major second is considered a leap
+  return intervalDistance > 2 || intervalDistance < -2; // Greater than a major second is considered a leap
 }
 
 function getStepUp(note: string, key: string) {
