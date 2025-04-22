@@ -1,7 +1,6 @@
 import Fraction from 'fraction.js';
 import { getChordInfoFromRoman } from './harmonyUtils';
 import { Interval, Key, Note, Scale } from 'tonal';
-import { get } from 'http';
 
 // returns object with melody and accompaniment
 export default function generateMA(
@@ -14,7 +13,7 @@ export default function generateMA(
 
 type Melody = { note: string; rhythm: number }[];
 
-// TODO: Make it so that melody is follows counterpoint rules
+// ADD MIN AND MAX RANGE FOR MELODY AND ACCOMPANIMENT
 function generateMelody(progression: string[], key: string, meter: string) {
   const keyObj = Key.majorKey(key);
   const melody: Melody = [];
