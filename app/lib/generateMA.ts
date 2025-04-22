@@ -84,6 +84,16 @@ function getNextNote(
   }
 }
 
+function getIntervalDirection(
+  firstNote: string,
+  secondNote: string,
+): 'asc' | 'desc' {
+  const interval = Interval.distance(firstNote, secondNote);
+  const intervalDistance = Interval.num(interval);
+
+  return intervalDistance > 0 ? 'asc' : 'desc';
+}
+
 function isLeap(firstNote: string, secondNote: string) {
   const interval = Interval.distance(firstNote, secondNote);
   const intervalDistance = Interval.num(interval);
