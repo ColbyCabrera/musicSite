@@ -208,6 +208,137 @@ function transposeDiatonicallyBySteps(
   return resultNote;
 }
 
+/**
+ * Checks if a given note falls within the specified musical range.
+ *
+ * @param noteName The note to check (e.g., "C4", "F#5").
+ * @param minRangeNote The minimum note of the range (e.g., "C4").
+ * @param maxRangeNote The maximum note of the range (e.g., "G5").
+ * @returns True if the note is within the range (inclusive), false otherwise or if inputs are invalid.
+ */
+function isInRange(
+  noteName: string,
+  minRangeNote: string,
+  maxRangeNote: string,
+): boolean {
+  const noteMidi = Note.midi(noteName);
+  const minMidi = Note.midi(minRangeNote);
+  const maxMidi = Note.midi(maxRangeNote);
+
+  // Check for invalid inputs
+  if (noteMidi === null || minMidi === null || maxMidi === null) {
+    console.warn(
+      `Invalid input for isInRange: note=${noteName}, min=${minRangeNote}, max=${maxRangeNote}`,
+    );
+    return false;
+  }
+  // Ensure min is not greater than max (though ideally validated earlier)
+  if (minMidi > maxMidi) {
+    console.warn(
+      `Min range ${minRangeNote} is higher than max range ${maxRangeNote} in isInRange.`,
+    );
+    return false; // Or handle as appropriate
+  }
+
+  return noteMidi >= minMidi && noteMidi <= maxMidi;
+}
+
+/**
+ * Transposes a note by octaves to fit within a specified musical range.
+ * If the note cannot fit even after transposition, it clamps to the nearest boundary (min or max).
+ *
+ * @param noteName The note to potentially adjust (e.g., "C3", "G6").
+ * @param minRangeNote The minimum note of the target range (e.g., "C4").
+ * @param maxRangeNote The maximum note of the target range (e.g., "G5").
+ * @returns The adjusted note name within the range, or the original note if inputs are invalid.
+ */
+function putInRange(
+  noteName: string,
+  minRangeNote: string,
+  maxRangeNote: string,
+): string {
+  const originalMidi = Note.midi(noteName);
+  const minMidi = Note.midi(minRangeNote);
+  const maxMidi = Note.midi(maxRangeNote);
+
+  // --- Input Validation ---
+  if (originalMidi === null || minMidi === null || maxMidi === null) {
+    console.warn(
+      `Invalid input for putInRange: note=${noteName}, min=${minRangeNote}, max=${maxRangeNote}. Returning original.`,
+    );
+    return noteName; // Return original note if any input is invalid
+  }
+  if (minMidi > maxMidi) {
+    console.warn(
+      `Min range ${minRangeNote} > max range ${maxRangeNote} in putInRange. Returning original note.`,
+    );
+    return noteName; // Cannot reasonably place in an invalid range
+  }
+
+  // --- Check if already in range ---
+  if (originalMidi >= minMidi && originalMidi <= maxMidi) {
+    return noteName; // Already in range
+  }
+
+  // --- Transpose if out of range ---
+  let currentNote = noteName;
+  let currentMidi = originalMidi;
+
+  if (currentMidi < minMidi) {
+    // Note is too low, transpose up by octaves
+    while (currentMidi < minMidi) {
+      const nextNote = Note.transpose(currentNote, '8P'); // 8P = Perfect Octave up
+      const nextMidi = Note.midi(nextNote);
+      if (nextMidi === null) {
+        // Should not happen with valid input/transpose
+        console.error(`Error transposing ${currentNote} up by octave.`);
+        return minRangeNote; // Fallback to min range note
+      }
+      // Check if transposing up *overshot* the max range
+      if (nextMidi > maxMidi) {
+        // It overshot. Decide whether min or max boundary is closer *musically* (MIDI difference)
+        // This case means the note's pitch class might not fit well.
+        // Clamp to the closest boundary.
+        return minMidi - currentMidi <= nextMidi - maxMidi
+          ? minRangeNote
+          : maxRangeNote;
+        // Alternative: Could return the last valid note *before* overshooting, which is currentNote.
+        // return currentNote; // This might be less musically jarring than clamping sometimes. Choose one behavior.
+        // Let's stick to clamping for now as requested.
+      }
+      currentNote = nextNote;
+      currentMidi = nextMidi;
+      // If it lands exactly in range, we'll exit the loop or the next check will pass.
+    }
+    // After loop, currentMidi >= minMidi. It might be > maxMidi if the initial overshoot check wasn't triggered (e.g., landed exactly on maxMidi+1).
+    // Re-check final position.
+    return currentMidi <= maxMidi ? currentNote : maxRangeNote; // Clamp to max if final position is too high
+  } else {
+    // currentMidi > maxMidi
+    // Note is too high, transpose down by octaves
+    while (currentMidi > maxMidi) {
+      const nextNote = Note.transpose(currentNote, '-8P'); // -8P = Perfect Octave down
+      const nextMidi = Note.midi(nextNote);
+      if (nextMidi === null) {
+        console.error(`Error transposing ${currentNote} down by octave.`);
+        return maxRangeNote; // Fallback to max range note
+      }
+      // Check if transposing down *undershot* the min range
+      if (nextMidi < minMidi) {
+        // It undershot. Clamp to the closest boundary.
+        return currentMidi - maxMidi <= minMidi - nextMidi
+          ? maxRangeNote
+          : minRangeNote;
+        // Alternative: return currentNote; // Return last valid note before undershooting.
+      }
+      currentNote = nextNote;
+      currentMidi = nextMidi;
+    }
+    // After loop, currentMidi <= maxMidi. Re-check final position.
+    return currentMidi >= minMidi ? currentNote : minRangeNote; // Clamp to min if final position is too low
+  }
+}
+
 type NoteValuesMap = Record<number, Fraction>;
 
 /**
