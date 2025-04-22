@@ -22,8 +22,7 @@ function generateMelody(progression: string[], key: string, meter: string) {
   progression.forEach((chord, i) => {
     const chordInfo = getChordInfoFromRoman(chord, key);
     const rhythm = generateRhythm(meter, 1);
-    if (i === 0)
-      melody.push({ note: startingNote, rhythm: rhythm.shift() ?? 0 });
+    if (i === 0) melody.push({ note: startingNote, rhythm: rhythm.shift()!! }); // Assert that rhythm is not empty
 
     rhythm.forEach((noteLength, j) => {
       const lastNote = Note.get(melody[melody.length - 1].note);
