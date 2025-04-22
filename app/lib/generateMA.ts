@@ -7,14 +7,38 @@ export default function generateMA(
   progression: string[],
   key: string,
   meter: string,
-) {
-  return generateMelody(progression, key, meter);
+  minRange: string, // e.g., 'C4'
+  maxRange: string, // e.g., 'G5'
+): Melody {
+  const minMidi = Note.midi(minRange);
+  const maxMidi = Note.midi(maxRange);
+
+  if (minMidi === null) {
+    throw new Error(`Invalid minimum range note: ${minRange}`);
+  }
+  if (maxMidi === null) {
+    throw new Error(`Invalid maximum range note: ${maxRange}`);
+  }
+  if (minMidi > maxMidi) {
+    throw new Error(
+      `Minimum range (${minRange}) cannot be higher than maximum range (${maxRange})`,
+    );
+  }
+
+  const melody = generateMelody(progression, key, meter, minRange, maxRange);
+  return melody; // Return structure
 }
 
 type Melody = { note: string; rhythm: number }[];
 
 // ADD MIN AND MAX RANGE FOR MELODY AND ACCOMPANIMENT
-function generateMelody(progression: string[], key: string, meter: string) {
+function generateMelody(
+  progression: string[],
+  key: string,
+  meter: string,
+  minRange: string, // e.g., 'C4'
+  maxRange: string,
+) {
   const keyObj = Key.majorKey(key);
   const melody: Melody = [];
   const startingNote = Key.majorKey(key).scale[0] + 4; // eg. C4
@@ -41,12 +65,19 @@ function generateMelody(progression: string[], key: string, meter: string) {
       const possibleNotes = weightedRandomChoice([
         {
           item: chordInfo?.noteNames.map(
-            (noteName) => Note.get(noteName).letter + lastNote.oct, // Proper note name, ex. C4, D4, etc.
+            (noteName) =>
+              putInRange(
+                Note.get(noteName).letter + lastNote.oct,
+                minRange,
+                maxRange,
+              ), // Proper note name, ex. C4, D4, etc.
           ),
           weight: 2,
         },
         {
-          item: diatonicNotes,
+          item: diatonicNotes.map((noteName) =>
+            putInRange(noteName, minRange, maxRange),
+          ),
           weight: 1,
         },
       ]) as string[];

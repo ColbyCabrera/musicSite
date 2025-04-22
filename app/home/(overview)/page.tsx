@@ -179,7 +179,7 @@ export default function Page() {
         );
         setGeneratedProgression(progression);
 
-        const melody = generateMA(progression, keySignature, meter);
+        const melody = generateMA(progression, keySignature, meter, 'C3', 'F6');
         setGeneratedMusicXml(melodyToMusicXML(melody));
       } catch (err) {
         console.error('Generation failed:', err);
