@@ -109,3 +109,8 @@ export interface ChordInfo {
   /** The pitch class (0-11) of the required bass note based on inversion, or null for root position. */
   requiredBassPc: number | null;
 }
+
+export interface WeightedChoice<T> {
+  item: T;
+  weight: number;
+}
