@@ -76,7 +76,7 @@ function generateMelody(
         },
         {
           item: diatonicNotes.map((noteName) =>
-            putInRange(noteName, minRange, maxRange),
+            putInRange(noteName ?? keyObj.scale[0] + 4, minRange, maxRange),
           ),
           weight: 1,
         },
