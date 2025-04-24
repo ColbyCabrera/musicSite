@@ -8,26 +8,27 @@ export default function generateMA(
   progression: string[],
   key: string,
   meter: string,
-  minRange: string, // e.g., 'C4'
-  maxRange: string, // e.g., 'G5'
-): Melody {
-  const minMidi = Note.midi(minRange);
-  const maxMidi = Note.midi(maxRange);
+  rangeConstraints: {
+    melody: { min: string; max: string };
+    accompaniment: { min: string; max: string };
+  },
+): { melody: Melody; accompaniment: Melody } {
+  const melody = generateMelody(
+    progression,
+    key,
+    meter,
+    rangeConstraints.melody.min,
+    rangeConstraints.melody.max,
+  );
+  const accompaniment = generateMelody(
+    progression,
+    key,
+    meter,
+    rangeConstraints.accompaniment.min,
+    rangeConstraints.accompaniment.max,
+  );
 
-  if (minMidi === null) {
-    throw new Error(`Invalid minimum range note: ${minRange}`);
-  }
-  if (maxMidi === null) {
-    throw new Error(`Invalid maximum range note: ${maxRange}`);
-  }
-  if (minMidi > maxMidi) {
-    throw new Error(
-      `Minimum range (${minRange}) cannot be higher than maximum range (${maxRange})`,
-    );
-  }
-
-  const melody = generateMelody(progression, key, meter, minRange, maxRange);
-  return melody; // Return structure
+  return { melody, accompaniment: accompaniment };
 }
 
 type Melody = { note: string; rhythm: number }[];
