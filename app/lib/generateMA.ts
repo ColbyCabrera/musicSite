@@ -32,7 +32,6 @@ export default function generateMA(
 
 type Melody = { note: string; rhythm: number }[];
 
-// ADD MIN AND MAX RANGE FOR MELODY AND ACCOMPANIMENT
 function generateMelody(
   progression: string[],
   key: string,
