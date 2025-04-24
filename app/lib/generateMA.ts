@@ -36,7 +36,7 @@ function generateMelody(
   progression: string[],
   key: string,
   meter: string,
-  minRange: string, // e.g., 'C4'
+  minRange: string,
   maxRange: string,
 ) {
   const keyObj = Key.majorKey(key);
