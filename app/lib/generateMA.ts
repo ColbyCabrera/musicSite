@@ -54,6 +54,7 @@ Accompaniment Range Constraints: ${rangeConstraints.accompaniment.min} to ${rang
 Accompaniment Generation Guidelines:
 
 Avoid voice crossing.
+Don't use the same accompaniment pattern throughout the entire piece.
 
 Harmonic Richness:
 
