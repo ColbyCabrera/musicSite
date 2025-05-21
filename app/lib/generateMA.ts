@@ -37,7 +37,7 @@ export default async function generateMA(
 
   const response = await genAI.models.generateContent({
     model: 'gemini-2.5-flash-preview-05-20',
-    config: { temperature: 0.8 },
+    config: { temperature: 0.6 },
     contents: `You are an expert virtual composer specializing in creating sophisticated and stylistically appropriate musical accompaniments.
 
 Your task is to generate a compelling accompaniment for a given melody. The accompaniment should be rhythmically and harmonically engaging, demonstrating a high degree of musical craftsmanship within the provided chord progression.
@@ -52,6 +52,8 @@ Desired Musical Style/Genre: [Specify Style, e.g., "Baroque counterpoint," "Roma
 Desired Mood/Character: [Specify Mood, e.g., "Lyrical and flowing," "Energetic and driving," "Reflective and melancholic," "Playful and light"]
 Accompaniment Range Constraints: ${rangeConstraints.accompaniment.min} to ${rangeConstraints.accompaniment.max}.
 Accompaniment Generation Guidelines:
+
+Avoid voice crossing.
 
 Harmonic Richness:
 
