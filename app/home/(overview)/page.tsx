@@ -162,7 +162,7 @@ export default function Page() {
     }
 
     // Use setTimeout to allow UI to update before potentially blocking generation
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
         const settings: GenerationSettings = {
           melodicSmoothness,
@@ -179,7 +179,7 @@ export default function Page() {
         );
         setGeneratedProgression(progression);
 
-        const { melody, accompaniment } = generateMA(
+        const { melody, accompaniment } = await generateMA(
           progression,
           keySignature,
           meter,

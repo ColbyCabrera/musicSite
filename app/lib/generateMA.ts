@@ -1,10 +1,17 @@
+'use server';
+
 import { getChordInfoFromRoman } from './harmonyUtils';
 import { Interval, Key, Note, Scale } from 'tonal';
 import { weightedRandomChoice } from './utils';
+import { GoogleGenAI } from '@google/genai';
 import { generateRhythm } from './rhythm';
 
+const API_KEY = process.env.GEMINI_API_KEY;
+
+const genAI = new GoogleGenAI({ apiKey: API_KEY });
+
 // returns object with melody and accompaniment
-export default function generateMA(
+export default async function generateMA(
   progression: string[],
   key: string,
   meter: string,
@@ -12,7 +19,7 @@ export default function generateMA(
     melody: { min: string; max: string };
     accompaniment: { min: string; max: string };
   },
-): { melody: Melody; accompaniment: Melody } {
+): Promise<{ melody: Melody; accompaniment: Melody }> {
   const melody = generateMelody(
     progression,
     key,
@@ -28,7 +35,64 @@ export default function generateMA(
     rangeConstraints.accompaniment.max,
   );
 
-  return { melody, accompaniment: accompaniment };
+  const response = await genAI.models.generateContent({
+    model: 'gemini-2.5-flash-preview-05-20',
+    config: { temperature: 0.8 },
+    contents: `You are an expert virtual composer specializing in creating sophisticated and stylistically appropriate musical accompaniments.
+
+Your task is to generate a compelling accompaniment for a given melody. The accompaniment should be rhythmically and harmonically engaging, demonstrating a high degree of musical craftsmanship within the provided chord progression.
+
+Key Parameters:
+
+Melody: ${JSON.stringify(melody)} (This is an array of note objects, e.g., [{"note": "C4", "rhythm": 4, "durationBars": 0.5}, {"note": "E4", "rhythm": 4, "durationBars": 0.5}] where rhythm indicates the note value (4 = quarter, 8 = eighth) and durationBars indicates its length in terms of bars or fractions thereof, ensuring clarity for the AI).
+Key Signature: ${key}
+Meter: ${meter} (e.g., "4/4", "3/4")
+Chord Progression: ${progression} (e.g., ["Cmaj7", "Am7", "Dm7", "G7"], ensure chords are clearly defined for each bar or section).
+Desired Musical Style/Genre: [Specify Style, e.g., "Baroque counterpoint," "Romantic piano," "Jazz walking bass with comping," "Contemporary pop ballad"]
+Desired Mood/Character: [Specify Mood, e.g., "Lyrical and flowing," "Energetic and driving," "Reflective and melancholic," "Playful and light"]
+Accompaniment Range Constraints: ${rangeConstraints.accompaniment.min} to ${rangeConstraints.accompaniment.max}.
+Accompaniment Generation Guidelines:
+
+Harmonic Richness:
+
+Go beyond basic triads. Intelligently incorporate chord extensions (7ths, 9ths, 11ths, 13ths), alterations, and suspensions where stylistically appropriate to the specified styles and ${progression}.
+Employ smooth and logical voice leading between chords, minimizing awkward jumps unless stylistically intended (e.g., for dramatic effect in certain styles). Consider contrary and oblique motion against the melody.
+Rhythmic Complexity and Interaction:
+
+The accompaniment's rhythm should complement and interact with the melody, not just mirror it or be static.
+Utilize a variety of rhythmic figures: syncopation, dotted rhythms, triplets (if appropriate for the meter and style), and varied note durations.
+Develop rhythmic motifs in the accompaniment that can be subtly varied and repeated.
+Ensure each bar adheres strictly to the ${meter}, with the total number of beats accurately filled.
+Textural Variety:
+
+Employ a mix of textures. This can include, but is not limited to:
+Block Chords: Used judiciously for emphasis or specific stylistic effects.
+Arpeggios: Varied patterns (ascending, descending, mixed, spread across octaves).
+Broken Chords: (e.g., Alberti bass if stylistically fitting).
+Counter-melodies: Introduce secondary melodic lines in the accompaniment that harmonize with the main melody.
+Homophonic vs. Polyphonic elements: Introduce moments of greater independence between voices in the accompaniment.
+Vary the density of the accompaniment (number of simultaneous notes) to create dynamic interest and support the melody's phrasing.
+Melodic Coherence in Accompaniment:
+
+While supporting the harmony, individual lines within the accompaniment should possess some melodic integrity.
+Make use of non-chord tones thoughtfully: passing tones, neighbor tones, appoggiaturas, and escape tones to create smoother lines and add expressive detail. Ensure these resolve correctly according to common practice harmony or the specified style.
+Structural Awareness:
+
+The accompaniment should span the same total number of bars as implied by the melody and chord progression.
+Consider the overall form. If the melody has distinct sections (verse, chorus), the accompaniment should reflect these changes in character or intensity if appropriate for the musicalStyle.
+Output Format:
+
+The accompaniment MUST be an array of note objects. Each object must have a "note" property (e.g., "C#4", "Bb3") and a "rhythm" property (e.g., 4 for quarter, 8 for eighth, 2 for half, 1 for whole, 16 for sixteenth).
+Example: [{"note": "C3", "rhythm": 4}, {"note": "E3", "rhythm": 4}, {"note": "G3", "rhythm": 4}, ...]
+Return ONLY the JSON array of accompaniment note objects. Do not include any explanatory text or apologies if the task is challenging. Focus on generating the highest quality musical output based on these detailed instructions.`,
+  });
+
+  console.log(response.text);
+
+  return {
+    melody,
+    accompaniment: JSON.parse(response.text?.slice(7, -4) as string) as Melody,
+  };
 }
 
 type Melody = { note: string; rhythm: number }[];
