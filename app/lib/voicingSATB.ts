@@ -6,25 +6,36 @@ import {
   DEFAULT_OCTAVE,
 } from './constants';
 import { findClosestNote } from './voicingUtils';
-import { midiToNoteName } from './harmonyUtils';
+// import { midiToNoteName } from './harmonyUtils'; // Used only for console logs
 
 /**
- * Assigns a MIDI note for the Bass voice (SATB context), prioritizing inversions.
- * @param requiredBassPc - The pitch class (0-11) required for the bass (from inversion), or null for root position preference.
- * @param chordRootMidi - The root MIDI note of the current chord (for grounding if requiredBassPc is null).
- * @param chordNotesPool - All available MIDI notes for the chord across octaves.
- * @param previousBassMidi - MIDI note of this voice in the previous chord/beat.
- * @param smoothness - Smoothness preference (0-10).
- * @returns The chosen MIDI note, or null if no suitable note.
+ * Assigns a MIDI note for the Bass voice in an SATB (Soprano, Alto, Tenor, Bass) context.
+ * This function prioritizes placing the correct bass note for chord inversions. If the chord
+ * is in root position or if the required inverted bass note is unavailable, it aims to place
+ * the chord root in the bass. It also considers voice leading smoothness from the previous bass note.
+ *
+ * @param {number | null} requiredBassPc - The pitch class (0-11) of the bass note required by the chord's inversion.
+ *                                         If `null`, the chord is assumed to be in root position, or no specific
+ *                                         inversion is mandated, so the chord root is preferred.
+ * @param {number} chordRootMidi - The MIDI note number of the current chord's root. This is used as a
+ *                                 primary target if `requiredBassPc` is `null` or if the inverted bass note is not found.
+ * @param {number[]} chordNotesPool - An array of all available MIDI notes (across multiple octaves) that belong to the current chord.
+ *                                    These notes are candidates for the bass voice.
+ * @param {number | null} previousBassMidi - The MIDI note of the Bass voice from the previous musical event.
+ *                                           Used to encourage smooth voice leading.
+ * @param {number} smoothness - A numerical preference (0-10) for smooth voice leading. Higher values
+ *                              more strongly favor smaller melodic intervals from `previousBassMidi`.
+ * @returns {number | null} The chosen MIDI note number for the Bass voice, or `null` if no suitable
+ *                          note can be found within the defined bass range and chord constraints.
  */
 export function assignBassNoteSATB(
   requiredBassPc: number | null,
-  chordRootMidi: number, // Still useful as a fallback target
+  chordRootMidi: number,
   chordNotesPool: number[],
   previousBassMidi: number | null,
   smoothness: number,
 ): number | null {
-  const [minRange, maxRange] = VOICE_RANGES.bass;
+  const [minRange, maxRange] = VOICE_RANGES.bass; // Get defined MIDI range for bass
   const allowedBassNotes = chordNotesPool
     .filter((n) => n >= minRange && n <= maxRange)
     .sort((a, b) => a - b); // Ensure sorted
@@ -91,22 +102,38 @@ export function assignBassNoteSATB(
   );
 }
 
-// --- assignInnerVoicesSATB (No changes needed directly for inversion, relies on bass output) ---
-/** Assigns MIDI notes for the Alto and Tenor voices (SATB context). */
+/**
+ * Assigns MIDI notes for the Alto and Tenor voices in an SATB context.
+ * This function considers the already assigned Soprano and Bass notes and aims to complete
+ * the chord voicing according to common practice doubling rules (e.g., prioritize doubling
+ * the root, then the fifth, then the third; avoid doubling the leading tone).
+ * It also factors in voice ranges, spacing between voices, and voice leading smoothness.
+ *
+ * @param {number[]} chordPcs - An array of unique pitch classes (0-11) present in the current chord,
+ *                              typically derived from the root position of the chord.
+ * @param {number[]} fullChordNotePool - An array of all available MIDI notes for the current chord across multiple octaves.
+ * @param {number | null} previousTenorMidi - The MIDI note of the Tenor voice from the previous event.
+ * @param {number | null} previousAltoMidi - The MIDI note of the Alto voice from the previous event.
+ * @param {number | null} sopranoNoteMidi - The MIDI note already assigned to the Soprano voice for the current event.
+ * @param {number | null} bassNoteMidi - The MIDI note already assigned to the Bass voice for the current event (this could be an inverted bass note).
+ * @param {number} smoothness - A preference (0-10) for smooth voice leading for Alto and Tenor.
+ * @param {Tonal.Key.Key} keyDetails - An object containing details about the current musical key (tonic, type, scale),
+ *                                     used primarily for identifying the leading tone to avoid doubling it.
+ * @returns {{ tenorNoteMidi: number | null; altoNoteMidi: number | null }} An object containing the chosen MIDI notes
+ *          for the Tenor and Alto voices. Either can be `null` if no suitable note is found.
+ */
 export function assignInnerVoicesSATB(
-  chordPcs: number[], // Root position chord pitch classes
+  chordPcs: number[],
   fullChordNotePool: number[],
   previousTenorMidi: number | null,
   previousAltoMidi: number | null,
   sopranoNoteMidi: number | null,
-  bassNoteMidi: number | null, // This is the *actual* chosen bass note (could be inverted)
+  bassNoteMidi: number | null,
   smoothness: number,
-  keyDetails: Tonal.Key.Key,
+  keyDetails: Tonal.Key.Key, // Used for identifying leading tone etc.
 ): { tenorNoteMidi: number | null; altoNoteMidi: number | null } {
   if (sopranoNoteMidi === null || bassNoteMidi === null) {
-    console.warn(
-      'SATB: Cannot assign inner voices without valid soprano and bass.',
-    );
+    // console.warn('SATB: Cannot assign inner voices without valid soprano and bass notes.');
     return { tenorNoteMidi: null, altoNoteMidi: null };
   }
 
@@ -194,30 +221,34 @@ export function assignInnerVoicesSATB(
 
   // Ensure we have exactly two target PCs
   if (targetInnerPcs.length < 2) {
-    console.warn(
-      `SATB: Only ${targetInnerPcs.length} target PCs for inner voices. Adding fallback.`,
-    );
+    // console.warn(`SATB: Only ${targetInnerPcs.length} target PCs for inner voices. Adding fallback.`);
     const fallbackPc =
-      chordRootPc !== -1 && chordRootPc !== leadingTonePc
+      chordRootPc !== -1 && chordRootPc !== leadingTonePc // Prefer root if not LT
         ? chordRootPc
-        : (chordPcs.find((pc) => pc !== leadingTonePc) ?? chordPcs[0]);
-    if (fallbackPc !== undefined && !targetInnerPcs.includes(fallbackPc))
+        : (chordPcs.find((pc) => pc !== leadingTonePc) ?? chordPcs[0]); // Any chord tone not LT, or first chordPcs as last resort
+
+    if (fallbackPc !== undefined && !targetInnerPcs.includes(fallbackPc)) {
       targetInnerPcs.push(fallbackPc);
-    // If still not enough, just duplicate the first one (ugly, but avoids crash)
-    if (targetInnerPcs.length < 2 && targetInnerPcs.length > 0)
-      targetInnerPcs.push(targetInnerPcs[0]);
-    else if (targetInnerPcs.length === 0) {
-      // Catastrophe
-      console.error('SATB: No target PCs for inner voices. Assigning root.');
-      targetInnerPcs = [chordRootPc, chordRootPc];
+    }
+    // If still not enough (e.g. only one unique PC in chord and it's LT), duplicate what we have or root.
+    if (targetInnerPcs.length === 0 && fallbackPc !== undefined) targetInnerPcs.push(fallbackPc); // Ensure at least one
+    while (targetInnerPcs.length < 2 && targetInnerPcs.length > 0) {
+      targetInnerPcs.push(targetInnerPcs[0]); // Duplicate if only one
+    }
+    if (targetInnerPcs.length === 0) { // Absolute fallback if chordPcs was empty or only had LT
+      // console.error('SATB: No target PCs for inner voices even after fallback. Assigning chord root.');
+      targetInnerPcs = [chordRootPc, chordRootPc]; // Should be extremely rare
     }
   }
-  // Ensure exactly 2, preferring needed notes over doubled ones if > 2
+   // Ensure exactly 2 target PCs, preferring originally needed notes over doubled ones if there was an excess.
   if (targetInnerPcs.length > 2) {
-    targetInnerPcs = neededPcs.concat(pcsToDouble).slice(0, 2);
+    targetInnerPcs = neededPcs.concat(pcsToDouble).slice(0, 2); 
+    // This ensures that if `neededPcs` had 0 or 1 element, it takes those first,
+    // then fills the rest from `pcsToDouble` up to a total of 2.
   }
 
-  // Determine which PC goes to Alto and which to Tenor
+
+  // Determine which PC goes to Alto and which to Tenor.
   // Simple approach: assign randomly or based on previous notes proximity?
   // Let's try assigning based on proximity to previous notes or range centers
   const pc1 = targetInnerPcs[0];
@@ -228,41 +259,24 @@ export function assignInnerVoicesSATB(
   const tenorTargetMidiEst =
     previousTenorMidi ?? (altoTargetMidi + bassNoteMidi) / 2;
 
-  // Crude assignment: closer PC to previous alto goes to alto?
+  // This simple assignment strategy attempts to maintain pitch class if possible,
+  // or assigns based on a crude proximity/balance estimation.
+  // More sophisticated assignment could consider voice leading more directly here.
   let altoTargetPc: number;
   let tenorTargetPc: number;
 
-  const dist1Alto =
-    previousAltoMidi !== null
-      ? Math.min(
-          Math.abs(pc1 - (previousAltoMidi % 12)),
-          12 - Math.abs(pc1 - (previousAltoMidi % 12)),
-        )
-      : 6;
-  const dist2Alto =
-    previousAltoMidi !== null
-      ? Math.min(
-          Math.abs(pc2 - (previousAltoMidi % 12)),
-          12 - Math.abs(pc2 - (previousAltoMidi % 12)),
-        )
-      : 6;
-  const dist1Tenor =
-    previousTenorMidi !== null
-      ? Math.min(
-          Math.abs(pc1 - (previousTenorMidi % 12)),
-          12 - Math.abs(pc1 - (previousTenorMidi % 12)),
-        )
-      : 6;
-  const dist2Tenor =
-    previousTenorMidi !== null
-      ? Math.min(
-          Math.abs(pc2 - (previousTenorMidi % 12)),
-          12 - Math.abs(pc2 - (previousTenorMidi % 12)),
-        )
-      : 6;
+  // Estimate target midis for Alto and Tenor based on previous notes or S/B midpoint.
+  const altoApproxTargetMidi = previousAltoMidi ?? (sopranoNoteMidi + bassNoteMidi) / 2;
+  const tenorApproxTargetMidi = previousTenorMidi ?? (altoApproxTargetMidi + bassNoteMidi) / 2;
 
-  // Assign to minimize total distance? (dist1Alto + dist2Tenor) vs (dist2Alto + dist1Tenor)
-  if (dist1Alto + dist2Tenor <= dist2Alto + dist1Tenor) {
+  // Assign target PCs to Alto and Tenor based on which PC is "closer" to their previous pitch or estimated target.
+  // This is a heuristic and might not always yield optimal voice leading for PCs.
+  const distPc1ToAltoTarget = Math.abs(Tonal.Note.chroma(Tonal.Note.fromMidi(altoApproxTargetMidi)) - pc1);
+  const distPc2ToAltoTarget = Math.abs(Tonal.Note.chroma(Tonal.Note.fromMidi(altoApproxTargetMidi)) - pc2);
+  const distPc1ToTenorTarget = Math.abs(Tonal.Note.chroma(Tonal.Note.fromMidi(tenorApproxTargetMidi)) - pc1);
+  const distPc2ToTenorTarget = Math.abs(Tonal.Note.chroma(Tonal.Note.fromMidi(tenorApproxTargetMidi)) - pc2);
+
+  if ( (distPc1ToAltoTarget + distPc2ToTenorTarget) <= (distPc2ToAltoTarget + distPc1ToTenorTarget) ) {
     altoTargetPc = pc1;
     tenorTargetPc = pc2;
   } else {
@@ -270,7 +284,7 @@ export function assignInnerVoicesSATB(
     tenorTargetPc = pc1;
   }
 
-  // --- Filter Notes by Range and Spacing ---
+  // --- Filter available notes from the pool by Range and Spacing constraints ---
   const [altoMin, altoMax] = VOICE_RANGES.alto;
   const [tenorMin, tenorMax] = VOICE_RANGES.tenor;
 

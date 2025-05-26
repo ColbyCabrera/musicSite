@@ -1,27 +1,40 @@
 // src/progression.ts
 import * as Tonal from 'tonal';
+import { InvalidInputError, GenerationError } from './errors';
 
 /**
- * Generates a simple chord progression based on tonal harmony tendencies.
- * @param key - The key signature (e.g., "C", "Gm").
- * @param numMeasures - The desired number of measures (and chords).
- * @param harmonicComplexity - A value (0-10) influencing chord choices.
- * @returns An array of Roman numeral chord symbols.
+ * Generates a diatonic chord progression based on common tonal harmony principles.
+ * The progression starts and ends on the tonic. Intermediate chords are chosen based
+ * on functional harmony tendencies (e.g., dominant to tonic, subdominant to dominant)
+ * and a specified harmonic complexity level.
+ *
+ * @param {string} key - The key signature for the progression (e.g., "C", "Gm", "F#maj").
+ *                       The function handles both major and minor keys.
+ * @param {number} numMeasures - The desired total number of measures (and thus chords) in the progression.
+ *                               Must be a positive integer.
+ * @param {number} harmonicComplexity - A numerical value from 0 to 10 that influences the variety
+ *                                      and complexity of chords used. Higher values allow for more
+ *                                      secondary chords (like ii, iii, vi, vii°) and potentially 7ths.
+ * @returns {string[]} An array of strings, where each string is a Roman numeral chord symbol
+ *                     (e.g., ["I", "IV", "V7", "i"]). Returns an empty array if `numMeasures` is not positive.
+ * @throws {InvalidInputError} If the provided `key` is not a valid or recognized key signature.
+ * @throws {GenerationError} If an unexpected internal error occurs, such as the list of allowed
+ *                           chords becoming empty.
  */
 export function generateChordProgression(
     key: string,
     numMeasures: number,
-    harmonicComplexity: number, // 0-10
+    harmonicComplexity: number,
 ): string[] {
      if (numMeasures <= 0) return [];
 
+     // Clamp harmonicComplexity to ensure it's within the expected 0-10 range.
      harmonicComplexity = Math.max(0, Math.min(10, harmonicComplexity));
 
-     let keyDetails = Tonal.Key.majorKey(key) ?? Tonal.Key.minorKey(key);
+     const keyDetails = Tonal.Key.majorKey(key) ?? Tonal.Key.minorKey(key);
 
-     if (!keyDetails) {
-         console.error(`Invalid key "${key}". Defaulting to "C".`);
-         return key === 'C' ? ['I'] : generateChordProgression('C', numMeasures, harmonicComplexity); // Prevent infinite loop
+     if (!keyDetails || !keyDetails.tonic) { // Added !keyDetails.tonic for robustness
+         throw new InvalidInputError(`Invalid key signature provided for chord progression: "${key}".`);
      }
 
      const isMajor = keyDetails.type === 'major';
@@ -113,8 +126,13 @@ export function generateChordProgression(
          } while (attempts < MAX_ATTEMPTS_PER_CHORD && nextChord === undefined);
 
          if (nextChord === undefined) { // Fallback if loop failed
-             console.warn(`Progression: Could not determine next chord. Choosing random allowed.`);
-             nextChord = allowedChords[Math.floor(Math.random() * allowedChords.length)];
+            // This indicates a potential issue in the selection logic if no chord could be chosen after MAX_ATTEMPTS.
+            // It's not necessarily a critical error that should stop all generation, but a warning is good.
+            console.warn(`generateChordProgression: Could not determine next chord after ${MAX_ATTEMPTS_PER_CHORD} attempts for measure ${i + 1} in key "${key}". Choosing random allowed chord.`);
+            nextChord = allowedChords[Math.floor(Math.random() * allowedChords.length)];
+            if(!nextChord) { // Should be impossible if allowedChords has tonicRoman
+                throw new GenerationError(`generateChordProgression: Allowed chords list became empty unexpectedly for key "${key}" at measure ${i+1}.`);
+            }
          }
 
         progression.push(nextChord);

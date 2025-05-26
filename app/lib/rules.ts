@@ -3,6 +3,7 @@ import {
     PreviousNotesSATB,
     PreviousNotesMelodyAccompaniment,
     PreviousNotes,
+    GenerationStyle, // Import GenerationStyle for use in checkVoiceLeadingRules
 } from './types';
 import {
     VOICE_SPACING_LIMIT_SATB,
@@ -10,7 +11,21 @@ import {
 } from './constants';
 import { midiToNoteName } from './harmonyUtils';
 
-/** Checks for parallel 5ths and octaves between two voices (Helper for SATB/Melody-Bass). */
+/**
+ * Checks for parallel perfect fifths and octaves between two voices moving from a previous
+ * set of notes to a current set. It only flags parallels if both voices move in the
+ * same direction and maintain the same interval (P5 or P8).
+ *
+ * This is a helper function primarily used by `checkVoiceLeadingRules`.
+ *
+ * @param {number | null} voice1Prev - The MIDI note of the first voice in the previous chord/event.
+ * @param {number | null} voice1Curr - The MIDI note of the first voice in the current chord/event.
+ * @param {number | null} voice2Prev - The MIDI note of the second voice in the previous chord/event.
+ * @param {number | null} voice2Curr - The MIDI note of the second voice in the current chord/event.
+ * @param {string} part1Name - The name of the first voice/part (e.g., "Soprano", "Melody").
+ * @param {string} part2Name - The name of the second voice/part (e.g., "Alto", "Bass(Acc)").
+ * @param {string} loc - A location string (e.g., "M1:B1") for logging where the potential parallel occurred.
+ */
 function checkParallels(
     voice1Prev: number | null,
     voice1Curr: number | null,
@@ -18,11 +33,15 @@ function checkParallels(
     voice2Curr: number | null,
     part1Name: string,
     part2Name: string,
-    loc: string, // Location string (e.g., M1:B1)
+    loc: string,
 ): void {
-    if ([voice1Prev, voice1Curr, voice2Prev, voice2Curr].some(n => n === null)) return;
+    // Ensure all notes are present to check for parallels
+    if ([voice1Prev, voice1Curr, voice2Prev, voice2Curr].some(n => n === null)) {
+        return;
+    }
 
-    const v1p = voice1Prev!;
+    // Non-null assertion operator (!) is safe here due to the check above.
+    const v1p = voice1Prev!; 
     const v1c = voice1Curr!;
     const v2p = voice2Prev!;
     const v2c = voice2Curr!;
@@ -33,43 +52,75 @@ function checkParallels(
     // Check for similar motion (optional, but common rule)
     const v1Direction = Math.sign(v1c - v1p);
     const v2Direction = Math.sign(v2c - v2p);
-    // Only check classic parallels if moving in same direction (and not static)
-    // if (v1Direction === 0 || v2Direction === 0 || v1Direction !== v2Direction) return;
+    // Determine direction of movement for each voice.
+    const v1Direction = Math.sign(v1c - v1p);
+    const v2Direction = Math.sign(v2c - v2p);
 
-    // Check all motion for simplicity/strictness here, ignore if no change in interval
+    // Classic parallel motion requires both voices to move in the same direction.
+    // If either voice is static (direction 0) or they move in contrary/oblique motion,
+    // it's not considered parallel motion for P5s/P8s in the traditional sense.
+    if (v1Direction === 0 || v2Direction === 0 || v1Direction !== v2Direction) {
+        return;
+    }
+
+    // Calculate the interval in semitones for previous and current notes.
     const intervalPrevSemi = Math.abs(v1p - v2p);
     const intervalCurrSemi = Math.abs(v1c - v2c);
 
-    if (intervalPrevSemi === intervalCurrSemi && (v1p !== v1c || v2p !== v2c)) { // Interval is the same, and at least one voice moved
-        const isP5 = intervalPrevSemi % 12 === 7;
-        const isP8 = intervalPrevSemi % 12 === 0; // Includes P1
+    // Check if the interval remained the same and is a perfect 5th or octave.
+    if (intervalPrevSemi === intervalCurrSemi) {
+        const isPerfectFifth = intervalPrevSemi % 12 === 7; // 7 semitones = P5
+        const isPerfectOctaveOrUnison = intervalPrevSemi % 12 === 0; // 0 semitones = P1/P8/P15...
 
-        if (isP5) {
+        if (isPerfectFifth) {
             console.warn(
-                `PARALLEL 5th (${part1Name}/${part2Name}) at ${loc}. Prev: ${midiToNoteName(v1p)}-${midiToNoteName(v2p)}, Curr: ${midiToNoteName(v1c)}-${midiToNoteName(v2c)}`,
+                `VOICE LEADING: Parallel 5th between ${part1Name} and ${part2Name} at ${loc}. ` +
+                `Prev: ${midiToNoteName(v1p)} (${v1p})-${midiToNoteName(v2p)} (${v2p}), ` +
+                `Curr: ${midiToNoteName(v1c)} (${v1c})-${midiToNoteName(v2c)} (${v2c}).`
             );
-        } else if (isP8 && intervalPrevSemi > 0) { // Report P8, ignore P1 unless desired
-             console.warn(
-                `PARALLEL Octave (${part1Name}/${part2Name}) at ${loc}. Prev: ${midiToNoteName(v1p)}-${midiToNoteName(v2p)}, Curr: ${midiToNoteName(v1c)}-${midiToNoteName(v2c)}`,
+        } else if (isPerfectOctaveOrUnison && intervalPrevSemi > 0) { // intervalPrevSemi > 0 excludes parallel unisons if not desired.
+            console.warn(
+                `VOICE LEADING: Parallel Octave between ${part1Name} and ${part2Name} at ${loc}. ` +
+                `Prev: ${midiToNoteName(v1p)} (${v1p})-${midiToNoteName(v2p)} (${v2p}), ` +
+                `Curr: ${midiToNoteName(v1c)} (${v1c})-${midiToNoteName(v2c)} (${v2c}).`
             );
         }
     }
-    // Could add checks for hidden/direct octaves/fifths if needed
+    // TODO: Could potentially add checks for hidden/direct octaves/fifths if more advanced rules are needed.
 }
 
 
-/** Checks voice leading rules based on the generation style. */
+/**
+ * Checks various voice leading rules based on the specified generation style (SATB or MelodyAccompaniment).
+ * This includes checks for voice crossing, spacing between voices, and parallel motion (fifths and octaves).
+ * Warnings are logged to the console if rule violations are detected. The strictness of these checks
+ * can be controlled by the `strictness` parameter.
+ *
+ * @param {PreviousNotes} currentNotes - An object containing the MIDI notes of all voices/parts for the current musical event.
+ * @param {PreviousNotes | null} previousNotes - An object containing the MIDI notes from the immediately preceding event.
+ *                                            If `null` (e.g., for the very first event), parallel motion checks are skipped.
+ * @param {GenerationStyle} style - The musical style being generated ('SATB' or 'MelodyAccompaniment'),
+ *                                  which determines which set of rules to apply.
+ * @param {number} measureIndex - The 0-based index of the current measure, used for logging.
+ * @param {number} beatIndex - The 0-based index of the current beat or event within the measure, used for logging.
+ * @param {number} strictness - A value from 0 to 10 indicating the strictness of rule enforcement.
+ *                              Higher values enable more checks or more stringent limits.
+ *                              If `strictness` is 1 or less, most checks are skipped.
+ */
 export function checkVoiceLeadingRules(
     currentNotes: PreviousNotes,
-    previousNotes: PreviousNotes | null, // Allow null for first beat
-    style: 'SATB' | 'MelodyAccompaniment',
+    previousNotes: PreviousNotes | null,
+    style: GenerationStyle,
     measureIndex: number,
-    beatIndex: number, // 0-based beat index within measure
-    strictness: number, // Dissonance strictness (0-10)
+    beatIndex: number,
+    strictness: number,
 ): void {
-    if (strictness <= 1 || previousNotes === null) return; // Skip checks if low strictness or first beat
+    // Skip all checks if strictness is very low or if there's no previous context.
+    if (strictness <= 1 || previousNotes === null) {
+        return;
+    }
 
-    const loc = `M${measureIndex + 1}:B${beatIndex + 1}`;
+    const loc = `M${measureIndex + 1}:B${beatIndex + 1}`; // Location string for log messages
 
     if (style === 'SATB') {
         const current = currentNotes as PreviousNotesSATB;

@@ -1,26 +1,40 @@
 import Fraction from 'fraction.js';
+import { InvalidInputError, GenerationError } from './errors';
 
 type NoteValuesMap = Record<number, Fraction>;
 
 /**
- * Generates an array of note durations for one measure based on meter and complexity.
+ * Generates an array of rhythmic values for a single measure, based on the specified
+ * time signature (meter) and a complexity level. The output array contains numbers
+ * representing standard note durations (e.g., 4 for a quarter note, 8 for an eighth note).
+ * The sum of these durations (when interpreted according to the meter) should fill one measure.
  *
- * @param meter - The time signature as a string (e.g., '4/4', '3/4', '6/8').
- * @param complexity - An integer from 1 (simplest) to 10 (most complex).
- * @returns An array of numbers representing note durations (1: whole, 2: half,
- * 4: quarter, 8: eighth, 16: sixteenth, 32: thirty-second) that
- * sum up to the duration of one measure according to the meter.
- * @throws {Error} If the meter string is invalid or complexity is out of range.
+ * The function uses a weighted random selection process, where complexity influences
+ * the probability of choosing shorter (more complex) or longer (simpler) note values.
+ *
+ * @param {string} meter - The time signature as a string (e.g., '4/4', '3/4', '6/8').
+ *                         The numerator indicates beats per measure, and the denominator
+ *                         indicates the note value that represents one beat.
+ * @param {number} complexity - An integer from 1 (simplest rhythms) to 10 (most complex rhythms).
+ *                              This influences the distribution of note durations generated.
+ * @returns {number[]} An array of numbers, where each number is a rhythmic value
+ *                     (1=whole, 2=half, 4=quarter, 8=eighth, 16=sixteenth, 32=thirty-second).
+ *                     The total duration represented by these values will correspond to one measure
+ *                     in the given meter.
+ * @throws {InvalidInputError} If the meter string is malformed, uses unsupported denominators,
+ *                             or if the complexity value is outside the valid range (1-10).
+ * @throws {GenerationError} If an internal error occurs during rhythm selection,
+ *                           preventing a valid rhythm from being generated.
  */
 export function generateRhythm(meter: string, complexity: number): number[] {
   // --- Input Validation ---
-  if (complexity < 1 || complexity > 10) {
-    throw new Error('Complexity must be between 1 and 10.');
+  if (complexity < 1 || complexity > 10 || !Number.isInteger(complexity)) {
+    throw new InvalidInputError(`Complexity must be an integer between 1 and 10. Received: ${complexity}`);
   }
 
   const meterParts = meter.split('/');
   if (meterParts.length !== 2) {
-    throw new Error(`Invalid meter string format: '${meter}'. Expected 'N/D'.`);
+    throw new InvalidInputError(`Invalid meter string format: '${meter}'. Expected 'N/D' (e.g., '4/4').`);
   }
 
   const numerator = parseInt(meterParts[0], 10);
@@ -31,11 +45,10 @@ export function generateRhythm(meter: string, complexity: number): number[] {
     isNaN(numerator) ||
     isNaN(denominator) ||
     numerator <= 0 ||
-    denominator <= 0 ||
-    !validDenominators.includes(denominator)
+    !validDenominators.includes(denominator) // Denominator must be positive and one of the valid ones
   ) {
-    throw new Error(
-      `Invalid meter numerator or denominator in '${meter}'. Denominator must be one of ${validDenominators.join(', ')}.`,
+    throw new InvalidInputError(
+      `Invalid meter numerator or denominator in '${meter}'. Numerator must be positive, denominator must be one of ${validDenominators.join(', ')}. Received: N=${numerator}, D=${denominator}`,
     );
   }
 
@@ -155,9 +168,13 @@ export function generateRhythm(meter: string, complexity: number): number[] {
     }
 
     if (Object.keys(possibleNotes).length === 0) {
-      // Should not happen if 32nd notes are available and logic is correct
+      // This implies that remainingDuration is smaller than the smallest available noteValue (e.g., 32nd note).
+      // This can happen if the targetDuration is not perfectly divisible by standard note values.
+      // Instead of breaking, we should try to fill with the smallest possible unit or log a more specific error.
+      // For now, the console.warn is acceptable as the final check will report discrepancy.
+      // If this were a critical error, a GenerationError could be thrown.
       console.warn(
-        `Warning: No standard note value fits remaining duration ${remainingDuration.toFraction()}. Measure might be incomplete.`,
+        `generateRhythm: No standard note value fits remaining duration ${remainingDuration.toFraction()} for meter ${meter}. Measure might be incomplete or slightly off.`,
       );
       break;
     }
@@ -166,13 +183,14 @@ export function generateRhythm(meter: string, complexity: number): number[] {
     const chosenNote = weightedRandomChoice(possibleNotes, weights);
 
     if (chosenNote === null) {
-      console.warn(
-        `Warning: Could not select a note for remaining duration ${remainingDuration.toFraction()}. Measure might be incomplete.`,
+      // This would mean weightedRandomChoice failed despite possibleNotes having entries,
+      // which indicates an internal logic error in weightedRandomChoice or its inputs.
+      throw new GenerationError(
+        `generateRhythm: Could not select a note for remaining duration ${remainingDuration.toFraction()} (meter ${meter}), though options were available. This indicates an internal generation error.`,
       );
-      break; // Defensive break
     }
 
-    const chosenValue = noteValues[chosenNote];
+    const chosenValue = noteValues[chosenNote]; // chosenNote is number here
 
     // Add the chosen note to the rhythm
     rhythm.push(chosenNote);

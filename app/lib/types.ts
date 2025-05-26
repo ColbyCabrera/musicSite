@@ -1,117 +1,239 @@
 // src/types.ts
 import * as Tonal from 'tonal';
 
-/** Structure for MusicXML pitch representation */
+/**
+ * Represents the components of a musical pitch for MusicXML serialization.
+ */
 export interface MusicXMLPitch {
-  step: string; // C, D, E, F, G, A, B
-  alter?: number; // -2, -1, 0, 1, 2 (0 is natural, often omitted)
-  octave: number; // Standard octave number
+  /** The musical step (A-G). */
+  step: string;
+  /**
+   * The alteration value (e.g., -1 for flat, 1 for sharp).
+   * Optional, as 0 (natural) is often omitted in MusicXML.
+   */
+  alter?: number;
+  /** The octave number (e.g., 4 for middle C's octave). */
+  octave: number;
 }
 
-/** Internal data structure used during music generation */
+/**
+ * Defines the available styles for music generation.
+ * - `SATB`: Traditional four-part harmony (Soprano, Alto, Tenor, Bass).
+ * - `MelodyAccompaniment`: A single melody line with a multi-note accompaniment.
+ */
 export type GenerationStyle = 'SATB' | 'MelodyAccompaniment';
 
-/** Settings that control the music generation process */
+/**
+ * Configuration settings for the music generation process.
+ */
 export interface GenerationSettings {
+  /** The overall musical style to generate. */
   generationStyle: GenerationStyle;
-  melodicSmoothness: number; // 0-10: Higher values prefer smaller melodic intervals
-  harmonicComplexity: number; // 0-10: Higher values allow more complex chord choices
-  dissonanceStrictness: number; // 0-10: Higher values enforce stricter voice leading rules
-  numAccompanimentVoices?: number; // Optional: Number of accompaniment voices (default 3)
+  /**
+   * Controls preference for smaller melodic intervals (0-10).
+   * Higher values favor smoother, stepwise motion.
+   */
+  melodicSmoothness: number;
+  /**
+   * Influences the complexity of chord choices (0-10).
+   * Higher values may introduce more extended or altered chords.
+   * (Currently used more in progression generation than voicing).
+   */
+  harmonicComplexity: number;
+  /**
+   * Determines the strictness of voice leading rule enforcement (0-10).
+   * Higher values apply more rules or stricter checks.
+   */
+  dissonanceStrictness: number;
+  /**
+   * The number of voices in the accompaniment part, primarily for `MelodyAccompaniment` style.
+   * Defaults to 3 if not specified.
+   */
+  numAccompanimentVoices?: number;
+  /**
+   * Controls the rhythmic complexity of generated patterns (0-10).
+   * Higher values lead to more subdivided and varied rhythms.
+   * (Used by `getRhythmicPattern` in `generate.ts` and `generateRhythm` in `rhythm.ts`).
+   */
+  rhythmicComplexity?: number; // Added based on usage in generate.ts
 }
 
-/** State tracking for SATB voice generation */
+/**
+ * Stores the last played MIDI note for each voice in an SATB arrangement.
+ * Used to maintain context for voice leading and smoothness.
+ */
 export interface PreviousNotesSATB {
+  /** MIDI note of the Soprano voice, or `null` if no previous note. */
   soprano: number | null;
+  /** MIDI note of the Alto voice, or `null` if no previous note. */
   alto: number | null;
+  /** MIDI note of the Tenor voice, or `null` if no previous note. */
   tenor: number | null;
+  /** MIDI note of the Bass voice, or `null` if no previous note. */
   bass: number | null;
 }
 
-/** State tracking for melody + accompaniment generation */
+/**
+ * Stores the last played MIDI note for the melody and each voice in the accompaniment.
+ * Used for context in `MelodyAccompaniment` style generation.
+ */
 export interface PreviousNotesMelodyAccompaniment {
+  /** MIDI note of the Melody line, or `null` if no previous note. */
   melody: number | null;
+  /** An array of MIDI notes for each accompaniment voice, or `null` for voices without a previous note. */
   accompaniment: (number | null)[];
 }
 
-/** Union type for state tracking during generation */
+/**
+ * A union type representing the previous note state, adaptable to either
+ * `SATB` or `MelodyAccompaniment` generation styles.
+ */
 export type PreviousNotes =
   | PreviousNotesSATB
   | PreviousNotesMelodyAccompaniment;
 
-/** State tracking for melodic direction and patterns */
+/**
+ * Tracks the state of a melodic line's contour to guide subsequent note choices.
+ */
 export interface MelodicState {
-  lastDirection: number; // -1: down, 0: repeat/start, 1: up
-  directionStreak: number; // How many times we've moved in the same direction
+  /** The direction of the last melodic interval (-1 for down, 0 for repeat/start, 1 for up). */
+  lastDirection: number;
+  /** The number of consecutive times the melody has moved in the `lastDirection`. */
+  directionStreak: number;
 }
 
-/** Musical event within a measure for XML generation */
+/**
+ * Represents a single musical event (a note or a rest) within a measure,
+ * formatted for easy conversion to MusicXML.
+ */
 export interface MusicalEvent {
+  /** The type of event: 'note' or 'rest'. */
   type: 'note' | 'rest';
-  midi?: number | null; // MIDI pitch (null for rest)
-  durationTicks: number; // Duration in MusicXML divisions
-  staffNumber: string; // Staff number ('1' or '2')
-  voiceNumber: string; // Voice number within staff
-  stemDirection?: 'up' | 'down'; // Required for notes, optional for rests
-  noteType: string; // MusicXML note type (quarter, half, etc.)
-  isChordElement?: boolean; // True for subsequent notes in a chord
+  /** The MIDI pitch of the note. `null` or `undefined` for rests or if the note is unpitched. */
+  midi?: number | null;
+  /** The duration of the event in MusicXML divisions (ticks). */
+  durationTicks: number;
+  /** The staff number on which the event occurs (e.g., "1" for upper staff, "2" for lower). */
+  staffNumber: string;
+  /** The voice number within the staff (e.g., "1"). */
+  voiceNumber: string;
+  /** The stem direction for notes. Optional, as rests don't have stems. */
+  stemDirection?: 'up' | 'down';
+  /** The MusicXML note type (e.g., "quarter", "eighth", "half"). */
+  noteType: string;
+  /**
+   * Indicates if this note is part of a chord and should use the `<chord/>` element in MusicXML.
+   * `true` for the second and subsequent notes of a chord played simultaneously in the same voice.
+   */
+  isChordElement?: boolean;
 }
 
-/** Musical content of a single measure */
+/**
+ * Contains all musical events and associated information for a single measure.
+ */
 export interface MeasureData {
+  /** The 1-indexed number of the measure within the piece. */
   measureNumber: number;
-  romanNumeral: string; // Chord symbol for this measure
-  events: MusicalEvent[]; // All notes/rests in measure order
+  /** The Roman numeral chord symbol associated with this measure (e.g., "V7", "ii", "I64"). */
+  romanNumeral: string;
+  /** An array of `MusicalEvent` objects that occur in this measure, in chronological order. */
+  events: MusicalEvent[];
 }
 
-/** Complete musical piece data structure */
+/**
+ * Represents the complete generated musical piece, including metadata and all measure data.
+ * This is the primary intermediate structure before MusicXML conversion.
+ */
 export interface GeneratedPieceData {
+  /** Metadata associated with the generated piece. */
   metadata: {
+    /** The title of the piece. */
     title: string;
+    /** The name of the software used for generation. */
     software: string;
+    /** The date of encoding/generation in YYYY-MM-DD format. */
     encodingDate: string;
+    /** The name of the musical part (e.g., "Choral SATB", "Piano"). */
     partName: string;
-    keySignature: string; // e.g., "C", "Gm"
-    meter: string; // e.g., "4/4"
+    /** The key signature of the piece (e.g., "C", "Gm", "F#maj"). */
+    keySignature: string;
+    /** The time signature of the piece (e.g., "4/4", "3/4"). */
+    meter: string;
+    /** The total number of measures in the piece. */
     numMeasures: number;
+    /** The generation style used for the piece. */
     generationStyle: GenerationStyle;
-    divisions: number; // Add this
+    /** The number of MusicXML divisions per quarter note. */
+    divisions: number;
   };
+  /** An array of `MeasureData` objects, each representing a measure in the piece. */
   measures: MeasureData[];
 }
 
-export type KeyDetails = Tonal.Key.Key; // Or define your own interface based on Tonal.Key.Key properties
+/**
+ * Represents detailed information about a musical key, typically derived from Tonal.js.
+ * This can include tonic, type (major/minor), scale, chords, etc.
+ * Using `Tonal.Key.Key` directly or a custom interface mirroring its properties.
+ */
+export type KeyDetails = Tonal.Key.Key;
 
-/** Timing information used during generation */
+/**
+ * Contains essential timing information for a piece of music, derived from its meter.
+ */
 export interface TimingInfo {
-  meterBeats: number; // Number of beats per measure
-  beatValue: number; // Note value that gets one beat
-  divisions: number; // MusicXML divisions per quarter note
-  beatDurationTicks: number; // Duration of one beat in ticks
-  measureDurationTicks: number; // Duration of full measure in ticks
-  defaultNoteType: string; // Default note type for the meter
+  /** The number of beats per measure (e.g., 4 for 4/4 time). */
+  meterBeats: number;
+  /** The note value that represents one beat (e.g., 4 for a quarter note beat in 4/4 time). */
+  beatValue: number;
+  /** The number of MusicXML divisions (ticks) per quarter note. */
+  divisions: number;
+  /** The duration of a single beat in MusicXML divisions (ticks). */
+  beatDurationTicks: number;
+  /** The total duration of a full measure in MusicXML divisions (ticks). */
+  measureDurationTicks: number;
+  /** The default MusicXML note type string (e.g., "quarter") for a single beat in the current meter. */
+  defaultNoteType: string;
 }
 
-/** Context needed for measure generation */
+/**
+ * Bundles contextual information required for generating a single measure.
+ * This is an example, and might not be explicitly used if context is passed directly.
+ * @deprecated May not be actively used; context is often passed directly to functions.
+ */
 export interface MeasureGenerationContext {
-  baseChordNotes: number[]; // Root position chord notes
-  previousNotes: PreviousNotes; // State from previous measure
+  /** MIDI notes of the current chord in root position. */
+  baseChordNotes: number[];
+  /** State of notes from the previous measure/event. */
+  previousNotes: PreviousNotes;
+  /** Global generation settings. */
   generationSettings: GenerationSettings;
+  /** Details of the current key. */
   keyDetails: KeyDetails;
+  /** Timing information for the piece. */
   timingInfo: TimingInfo;
-  measureIndex: number; // Current measure number (0-based)
+  /** The 0-indexed number of the current measure being generated. */
+  measureIndex: number;
 }
 
+/**
+ * Represents the information extracted from a Roman numeral analysis for a specific chord.
+ */
 export interface ChordInfo {
   /** Array of MIDI note numbers for the chord in root position, sorted ascending. */
-  midiNotes: number[];
+  notes: number[];
   /** Array of note names with octave numbers (e.g., "C4", "E#5") for the chord in root position, sorted ascending by MIDI value. */
   noteNames: string[];
-  /** The pitch class (0-11) of the required bass note based on inversion, or null for root position. */
+  /** The pitch class (0-11) of the required bass note based on inversion (e.g., "V6/4" implies the 5th is in the bass). `null` for root position. */
   requiredBassPc: number | null;
 }
 
+/**
+ * Represents an item with an associated weight, used for weighted random selection.
+ * @template T The type of the item.
+ */
 export interface WeightedChoice<T> {
+  /** The item to be chosen. */
   item: T;
+  /** The weight associated with this item. Higher weights increase the probability of selection. */
   weight: number;
 }

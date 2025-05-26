@@ -1,26 +1,63 @@
+// src/toMusicXml.ts
+
+// TODO: Consider moving these interfaces to types.ts if they are used externally or for broader consistency.
+
+/**
+ * Represents a musical note with its pitch and rhythm.
+ * Used as input for generating MusicXML.
+ */
 interface NoteObject {
-  note?: string; // Note name like "C4", "F#5", "Bb3"
-  rhythm?: number | null; // Numerical representation (e.g., 4 for quarter)
-}
-
-interface RhythmInfo {
-  type: string; // MusicXML note type (e.g., "quarter", "half")
-  duration: number; // MusicXML duration based on divisions
-  beats: number; // Duration in terms of beats (e.g., 1.0 for quarter in 4/4)
-}
-
-interface PitchInfo {
-  step: string; // Note letter (A-G)
-  alter: number; // -1 for flat, 0 for natural, 1 for sharp
-  octave: string; // Octave number
+  /** The scientific pitch notation of the note (e.g., "C4", "F#5", "Bb3"). Optional. */
+  note?: string;
+  /**
+   * A numerical representation of the note's rhythm/duration.
+   * For example, 1 for whole, 2 for half, 4 for quarter, 8 for eighth, 16 for sixteenth.
+   * Optional, can be null.
+   */
+  rhythm?: number | null;
 }
 
 /**
- * Parses a note string (e.g., "C#4") into its components.
- * @param noteStr The note string to parse.
- * @returns A PitchInfo object or null if parsing fails.
+ * Holds information about a specific rhythmic value in MusicXML context.
+ */
+interface RhythmInfo {
+  /** The MusicXML note type string (e.g., "quarter", "half", "eighth"). */
+  type: string;
+  /** The duration of the note in MusicXML divisions (ticks). */
+  duration: number;
+  /** The duration of the note in terms of beats within the measure (e.g., 1.0 for a quarter note in 4/4 time). */
+  beats: number;
+}
+
+/**
+ * Represents the constituent parts of a musical pitch for MusicXML.
+ */
+interface PitchInfo {
+  /** The note's letter name (A, B, C, D, E, F, G). */
+  step: string;
+  /**
+   * The alteration of the note:
+   * - -2: double flat
+   * - -1: flat
+   * -  0: natural (often omitted in MusicXML if no accidental is displayed)
+   * -  1: sharp
+   * -  2: double sharp
+   */
+  alter: number;
+  /** The octave number as a string (e.g., "4" for the octave containing middle C). */
+  octave: string;
+}
+
+/**
+ * Parses a note string in scientific pitch notation (e.g., "C#4", "Bb3")
+ * into its fundamental components: step (letter), alteration (accidental), and octave.
+ *
+ * @param {string} noteStr - The note string to parse.
+ * @returns {PitchInfo | null} A `PitchInfo` object containing the parsed components,
+ *                             or `null` if the note string is invalid or cannot be parsed.
  */
 function parseNote(noteStr: string): PitchInfo | null {
+  // Regex to capture: 1=letter, 2=accidental (optional), 3=octave
   const match = noteStr.match(/([A-Ga-g])([#b]?)(\d+)/);
   if (match) {
     const step = match[1].toUpperCase();
@@ -38,37 +75,55 @@ function parseNote(noteStr: string): PitchInfo | null {
   return null; // Return null if parsing fails
 }
 
-// --- Constants and Mappings (shared) ---
-const divisions: number = 4; // Divisions per quarter note (higher values like 12 or 24 allow for triplets more easily if needed)
-const beatsPerMeasure: number = 4.0; // Assuming 4/4 time for measure calculation
-const beatType: number = 4; // The 'bottom' number of the time signature
-const tolerance: number = 1e-6; // For floating point comparisons
+// --- Shared Constants and Mappings for MusicXML Generation ---
 
-// Map input rhythm value to MusicXML type and duration based on 'divisions'
-// Ensure durations are integers if divisions change
+/** Default number of divisions per quarter note in MusicXML. Higher values allow for finer rhythmic precision. */
+const divisions: number = 4;
+/** Default number of beats per measure, assuming 4/4 time for calculations if not otherwise specified. */
+const beatsPerMeasure: number = 4.0;
+/** Default beat type (denominator of time signature), assuming 4/4 time. */
+const beatType: number = 4;
+/** Small tolerance value used for floating-point comparisons, e.g., when checking if a measure is full. */
+const tolerance: number = 1e-6;
+
+/**
+ * Maps numerical rhythm representations (e.g., 4 for quarter) to MusicXML note types,
+ * durations in divisions, and duration in beats.
+ * This map assumes a fixed value for `divisions` (currently 4). If `divisions` changes,
+ * the `duration` values here must be updated accordingly.
+ * @readonly
+ */
 const rhythmMap = new Map<number, RhythmInfo>([
-  // Assuming divisions = 4, beatType = 4
-  [1, { type: 'whole', duration: divisions * 4, beats: 4.0 }],
-  [2, { type: 'half', duration: divisions * 2, beats: 2.0 }],
-  [4, { type: 'quarter', duration: divisions * 1, beats: 1.0 }],
-  [8, { type: 'eighth', duration: divisions / 2, beats: 0.5 }],
-  [16, { type: '16th', duration: divisions / 4, beats: 0.25 }],
+  // Assuming divisions = 4 (meaning quarter note = 4 divisions)
+  [1, { type: 'whole', duration: divisions * 4, beats: 4.0 }],    // Whole note = 16 divisions
+  [2, { type: 'half', duration: divisions * 2, beats: 2.0 }],     // Half note = 8 divisions
+  [4, { type: 'quarter', duration: divisions * 1, beats: 1.0 }],   // Quarter note = 4 divisions
+  [8, { type: 'eighth', duration: divisions / 2, beats: 0.5 }],    // Eighth note = 2 divisions
+  [16, { type: '16th', duration: divisions / 4, beats: 0.25 }],   // Sixteenth note = 1 division
+  // TODO: Consider adding 32nd notes (divisions / 8, beats: 0.125) if needed
 ]);
 
-// --- New Interface for Input Data ---
+/**
+ * Defines the structure for the input score data, containing separate arrays
+ * of `NoteObject` for melody and accompaniment parts.
+ */
 interface ScoreData {
+  /** An array of `NoteObject` representing the melody line. */
   melody: NoteObject[];
+  /** An array of `NoteObject` representing the accompaniment part. */
   accompaniment: NoteObject[];
 }
 
 /**
- * Generates the MusicXML for a single part (melody or accompaniment).
+ * Generates the MusicXML string for a single musical part (e.g., melody or accompaniment).
+ * This includes measure definitions, attributes (clef, time signature, key signature for the first measure),
+ * and note/rest elements.
  *
- * @param notes The array of NoteObjects for this part.
- * @param partId The unique ID for this part (e.g., "P1", "P2").
- * @param clefSign The clef sign ('G' or 'F').
- * @param clefLine The line number for the clef (e.g., 2 for G, 4 for F).
- * @returns The MusicXML string for the <part> element.
+ * @param {NoteObject[]} notes - An array of `NoteObject` instances representing the musical content of this part.
+ * @param {string} partId - A unique identifier for this part (e.g., "P1", "P2"), used in the `<part>` element's `id` attribute.
+ * @param {('G' | 'F')} clefSign - The clef sign to use for this part ('G' for treble, 'F' for bass).
+ * @param {number} clefLine - The staff line number on which the clef is centered (e.g., 2 for G-clef, 4 for F-clef).
+ * @returns {string} A string containing the complete MusicXML for the `<part>` element and its contents.
  */
 function generatePartXML(
   notes: NoteObject[],
@@ -76,8 +131,8 @@ function generatePartXML(
   clefSign: 'G' | 'F',
   clefLine: number,
 ): string {
-  let partXml = `  <part id="${partId}">\n`;
-  let measureNumber: number = 1;
+  let partXml = `  <part id="${partId}">\n`; // Start of the <part> element
+  let measureNumber: number = 1; // MusicXML measures are typically 1-indexed
   let currentBeatInMeasure: number = 0.0;
   let isFirstMeasure: boolean = true;
 
