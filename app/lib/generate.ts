@@ -743,6 +743,7 @@ function generateMusicalData(
       meter: meter,
       numMeasures: numMeasures,
       generationStyle: generationStyle,
+      divisions: timingInfo.divisions, // Add this line
     },
     measures: generatedMeasures,
   };
@@ -833,7 +834,7 @@ function createMusicXMLString(data: GeneratedPieceData): string {
     if (measureIndex === 0) {
       const attributes = measureBuilder.ele('attributes');
       // MusicXML divisions = ticks per quarter note
-      attributes.ele('divisions').txt('4').up();
+      attributes.ele('divisions').txt(`${metadata.divisions}`).up(); // Use metadata.divisions
       
       // Key signature
       attributes.ele('key')
@@ -1006,23 +1007,22 @@ function addMusicalEventsToXML(
  * @returns Number of fifths (-7 to +7) for the key signature
  */
 function getFifths(tonic: string): number {
-  const keyFifthsMap: { [key: string]: number } = {
-    C: 0,   G: 1,   D: 2,   A: 3,   E: 4,   B: 5,   'F#': 6,  'C#': 7,
-    F: -1,  Bb: -2, Eb: -3, Ab: -4, Db: -5, Gb: -6, Cb: -7
-  };
-  
-  const normalized = Tonal.Note.simplify(tonic.trim());
-  if (normalized in keyFifthsMap) {
-    return keyFifthsMap[normalized];
-  } else {
-    // For minor keys, try transposing to relative major
-    const majTonic = Tonal.Note.transpose(normalized, 'm3');
-    if (majTonic in keyFifthsMap) {
-      return keyFifthsMap[majTonic];
-    }
-    console.warn(
-      `Unsupported tonic for key signature: ${tonic} (normalized: ${normalized}). Defaulting to 0.`,
-    );
-    return 0;
+  const normalizedTonic = tonic.trim(); // Good practice, though Tonal functions often handle it.
+
+  const majorKeyDetails = Tonal.Key.majorKey(normalizedTonic);
+  if (majorKeyDetails && typeof majorKeyDetails.alteration === 'number') {
+    
+    return majorKeyDetails.alteration;
   }
+
+  const minorKeyDetails = Tonal.Key.minorKey(normalizedTonic);
+  if (minorKeyDetails && typeof minorKeyDetails.alteration === 'number') {
+    
+    return minorKeyDetails.alteration;
+  }
+
+  console.warn(
+    `Unsupported tonic for key signature: ${tonic}. Defaulting to 0 fifths.`,
+  );
+  return 0;
 }
