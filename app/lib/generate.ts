@@ -1011,13 +1011,13 @@ function getFifths(tonic: string): number {
 
   const majorKeyDetails = Tonal.Key.majorKey(normalizedTonic);
   if (majorKeyDetails && typeof majorKeyDetails.alteration === 'number') {
-    // console.log(`Major key ${normalizedTonic}: ${majorKeyDetails.alteration} fifths`);
+    
     return majorKeyDetails.alteration;
   }
 
   const minorKeyDetails = Tonal.Key.minorKey(normalizedTonic);
   if (minorKeyDetails && typeof minorKeyDetails.alteration === 'number') {
-    // console.log(`Minor key ${normalizedTonic}: ${minorKeyDetails.alteration} fifths`);
+    
     return minorKeyDetails.alteration;
   }
 
