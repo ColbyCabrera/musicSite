@@ -75,6 +75,7 @@ export interface GeneratedPieceData {
     meter: string; // e.g., "4/4"
     numMeasures: number;
     generationStyle: GenerationStyle;
+    divisions: number; // Add this
   };
   measures: MeasureData[];
 }
