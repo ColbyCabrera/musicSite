@@ -22,4 +22,6 @@ export type User = {
   color?: string | null;
   /** The role assigned to the user, determining their permissions. */
   role: UserRole;
+  /** Whether AI accompaniment generation is enabled for the user. Optional. */
+  enableAiAccompaniment?: boolean | null;
 };

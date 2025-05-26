@@ -32,6 +32,7 @@ export default async function generateMA(
     melody: { min: string; max: string };
     accompaniment: { min: string; max: string };
   },
+  enableAiAccompaniment: boolean, // New parameter
 ): Promise<{ melody: Melody; accompaniment: Melody }> {
   const melody = generateMelody(
     progression,
@@ -40,17 +41,13 @@ export default async function generateMA(
     rangeConstraints.melody.min,
     rangeConstraints.melody.max,
   );
-  const accompaniment = generateMelody(
-    progression,
-    key,
-    meter,
-    rangeConstraints.accompaniment.min,
-    rangeConstraints.accompaniment.max,
-  );
 
-  let geminiResponseText: string | undefined;
-  try {
-    const genAI = getGenAI(); // Initialize or get existing instance
+  let accompaniment: Melody; // Define accompaniment here
+
+  if (enableAiAccompaniment) {
+    let geminiResponseText: string | undefined;
+    try {
+      const genAI = getGenAI(); // Initialize or get existing instance
     const model = genAI.getGenerativeModel({
       model: "gemini-1.5-flash-preview-0514", // Ensure this model name is current
       // GenerationConfig and SafetySettings can be added here if needed
@@ -132,20 +129,27 @@ Return ONLY the JSON array of accompaniment note objects. Do not include any exp
 
   // console.log(geminiResponseText); // Log for debugging API response
 
-  try {
-    // Attempt to parse the response, assuming it might be wrapped in markdown (```json ... ```)
-    const jsonMatch = geminiResponseText.match(/```json\s*([\s\S]*?)\s*```/);
-    const jsonToParse = jsonMatch ? jsonMatch[1] : geminiResponseText;
-    const parsedAccompaniment = JSON.parse(jsonToParse) as Melody;
-    
-    return {
-      melody,
-      accompaniment: parsedAccompaniment,
-    };
-  } catch (parseError: unknown) {
-    console.error('Failed to parse Gemini API response as JSON:', geminiResponseText, parseError);
-    throw new GenerationError(`Failed to parse accompaniment from API response. Raw response: "${geminiResponseText}"`);
+    try {
+      // Ensure responseText is a string before trying to match or parse
+      const responseText = typeof geminiResponseText === 'string' ? geminiResponseText : '';
+      // Attempt to parse the response, assuming it might be wrapped in markdown (```json ... ```)
+      const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/);
+      const jsonToParse = jsonMatch ? jsonMatch[1] : responseText;
+      const parsedAccompaniment = JSON.parse(jsonToParse) as Melody;
+      accompaniment = parsedAccompaniment; // Assign parsed accompaniment
+    } catch (parseError: unknown) {
+      console.error('Failed to parse Gemini API response as JSON:', responseText, parseError);
+      throw new GenerationError(`Failed to parse accompaniment from API response. Raw response: "${responseText}"`);
+    }
+  } else {
+    accompaniment = []; // Set to empty array if AI accompaniment is disabled
+    console.log('AI accompaniment is disabled. Skipping Gemini API call.');
   }
+
+  return {
+    melody,
+    accompaniment,
+  };
 }
 
 type Melody = { note: string; rhythm: number }[];
