@@ -129,7 +129,14 @@ describe('generateChordProgression', () => {
         if (progMajor.some(c => c.endsWith('7') && c !== 'V7')) hasMoreSeventhsMajor = true;
       }
       expect(hasDiminishedMajor).toBe(true);
-      // expect(hasMoreSeventhsMajor).toBe(true); // This is probabilistic
+      expect(hasMoreSeventhsMajor).toBe(true); // Ensure condition is met in most iterations
+      const majorIterations = 10;
+      let majorSeventhsCount = 0;
+      for (let i = 0; i < majorIterations; i++) {
+        const progMajor = generateChordProgression(keyMajor, measures, 8);
+        if (progMajor.some(c => c.endsWith('7') && c !== 'V7')) majorSeventhsCount++;
+      }
+      expect(majorSeventhsCount).toBeGreaterThanOrEqual(majorIterations * 0.7); // At least 70% of iterations
 
       let hasDiminishedMinor = false;
       let hasMoreSeventhsMinor = false;
