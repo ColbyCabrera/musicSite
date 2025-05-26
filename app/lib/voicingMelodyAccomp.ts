@@ -1,36 +1,54 @@
 // src/voicingMelodyAccomp.ts
 import { VOICE_RANGES, MELODY_ACCOMPANIMENT_SPACING_LIMIT } from './constants';
 import { findClosestNote } from './voicingUtils';
-import { midiToNoteName } from './harmonyUtils';
+// import { midiToNoteName } from './harmonyUtils'; // Not used directly, only for console.warn/error
 
 /**
- * Generates accompaniment voicing (typically 3 notes) for Melody+Accompaniment style.
- * Aims for common keyboard voicings below the melody.
- * @param melodyNoteMidi - The MIDI note of the melody line.
- * @param chordRootMidi - The root MIDI note of the current chord (for grounding).
- * @param chordPcs - The pitch classes present in the current chord.
- * @param fullChordNotePool - All available MIDI notes for the chord across octaves.
- * @param previousAccompanimentNotes - Array of MIDI notes from the previous accompaniment chord.
- * @param smoothness - Smoothness preference (0-10).
- * @param numVoices - Number of notes desired in the accompaniment chord (e.g., 3).
- * @returns { (number | null)[] } An array of MIDI notes for the accompaniment, ordered lowest to highest.
+ * Generates an accompaniment voicing, typically consisting of three notes, suitable for
+ * a "Melody + Accompaniment" musical style. The function aims to create common keyboard-style
+ * voicings that sit below the melody line.
+ *
+ * The process involves:
+ * 1. Filtering available notes from the `fullChordNotePool` based on range, proximity to melody, and chord membership.
+ * 2. Assigning the lowest note, prioritizing the chord root if available in a suitable low register.
+ * 3. Assigning subsequent upper notes, aiming for smooth voice leading from `previousAccompanimentNotes`
+ *    and maintaining a limited octave span from the lowest note.
+ *
+ * @param {number | null} melodyNoteMidi - The MIDI note number of the current melody note.
+ *                                         If `null`, the function cannot generate a sensible voicing and returns nulls.
+ * @param {number} chordRootMidi - The MIDI note number of the root of the current chord. Used for grounding the voicing.
+ * @param {number[]} chordPcs - An array of pitch classes (0-11) present in the current chord.
+ *                              Used to ensure accompaniment notes are chord tones.
+ * @param {number[]} fullChordNotePool - An array of all available MIDI notes for the current chord across multiple octaves.
+ * @param {(number | null)[]} previousAccompanimentNotes - An array of MIDI notes from the accompaniment chord
+ *                                                        of the previous musical event. Used to guide smooth voice leading.
+ *                                                        The length should match `numVoices`.
+ * @param {number} smoothness - A preference value (0-10) for smooth voice leading. Higher values more strongly
+ *                              prioritize stepwise motion or small leaps.
+ * @param {number} [numVoices=3] - The desired number of notes in the accompaniment chord (typically 3).
+ * @returns {(number | null)[]} An array of MIDI note numbers representing the accompaniment voicing,
+ *                              ordered from lowest to highest. If a suitable note cannot be found for a voice,
+ *                              `null` is used for that position. Returns an array of nulls if critical
+ *                              input (like `melodyNoteMidi`) is missing or if no notes can be placed.
  */
 export function generateAccompanimentVoicing(
     melodyNoteMidi: number | null,
     chordRootMidi: number,
-    chordPcs: number[],
+    chordPcs: number[], // Ensure this represents the *current* chord's pitch classes
     fullChordNotePool: number[],
     previousAccompanimentNotes: (number | null)[],
     smoothness: number,
     numVoices: number = 3,
 ): (number | null)[] {
     if (melodyNoteMidi === null) {
-        console.warn('Accompaniment: Cannot generate voicing without melody note.');
+        // console.warn('Accompaniment: Cannot generate voicing without a melody note to voice under.');
         return Array(numVoices).fill(null);
     }
-    if (numVoices <= 0) return [];
+    if (numVoices <= 0) {
+        return [];
+    }
 
-    const [minRange, maxRange] = VOICE_RANGES.accompaniment;
+    const [minRange, maxRange] = VOICE_RANGES.accompaniment; // Destructure min/max MIDI values for accompaniment range
     const chordRootPc = chordRootMidi % 12;
 
     let availableNotes = fullChordNotePool

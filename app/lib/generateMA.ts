@@ -3,12 +3,25 @@
 import { getChordInfoFromRoman } from './harmonyUtils';
 import { Interval, Key, Note, Scale } from 'tonal';
 import { weightedRandomChoice } from './utils';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, HarmBlockThreshold, HarmCategory } from '@google/genai';
 import { generateRhythm } from './rhythm';
+import { ApiError, GenerationError, InvalidInputError, MusicTheoryError } from './errors';
+
 
 const API_KEY = process.env.GEMINI_API_KEY;
 
-const genAI = new GoogleGenAI({ apiKey: API_KEY });
+let genAIInstance: GoogleGenAI | null = null;
+
+function getGenAI() {
+  if (!genAIInstance) {
+    if (!API_KEY) {
+      throw new ApiError('GEMINI_API_KEY is not set in environment variables.');
+    }
+    genAIInstance = new GoogleGenAI({ apiKey: API_KEY });
+  }
+  return genAIInstance;
+}
+
 
 // returns object with melody and accompaniment
 export default async function generateMA(
@@ -35,10 +48,21 @@ export default async function generateMA(
     rangeConstraints.accompaniment.max,
   );
 
-  const response = await genAI.models.generateContent({
-    model: 'gemini-2.5-flash-preview-05-20',
-    config: { temperature: 0.6 },
-    contents: `You are an expert virtual composer specializing in creating sophisticated and stylistically appropriate musical accompaniments.
+  let geminiResponseText: string | undefined;
+  try {
+    const genAI = getGenAI(); // Initialize or get existing instance
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash-preview-0514", // Ensure this model name is current
+      // GenerationConfig and SafetySettings can be added here if needed
+      // generationConfig: { temperature: 0.7 },
+      // safetySettings: [
+      //   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      //   // Add other categories as needed
+      // ]
+    });
+    const result = await model.generateContent({
+      contents: [{role: "user", parts: [{
+          text: `You are an expert virtual composer specializing in creating sophisticated and stylistically appropriate musical accompaniments.
 
 Your task is to generate a compelling accompaniment for a given melody. The accompaniment should be rhythmically and harmonically engaging, demonstrating a high degree of musical craftsmanship within the provided chord progression.
 
@@ -87,143 +111,294 @@ Output Format:
 
 The accompaniment MUST be an array of note objects. Each object must have a "note" property (e.g., "C#4", "Bb3") and a "rhythm" property (e.g., 4 for quarter, 8 for eighth, 2 for half, 1 for whole, 16 for sixteenth).
 Example: [{"note": "C3", "rhythm": 4}, {"note": "E3", "rhythm": 4}, {"note": "G3", "rhythm": 4}, ...]
-Return ONLY the JSON array of accompaniment note objects. Do not include any explanatory text or apologies if the task is challenging. Focus on generating the highest quality musical output based on these detailed instructions.`,
-  });
+Return ONLY the JSON array of accompaniment note objects. Do not include any explanatory text or apologies if the task is challenging. Focus on generating the highest quality musical output based on these detailed instructions.`}]}],
+    });
+    const response = result.response;
+    geminiResponseText = response.text();
 
-  console.log(response.text);
+  } catch (error: unknown) { // Catch unknown to inspect it
+    if (error instanceof Error) {
+      console.error('Gemini API Error:', error.message);
+      throw new ApiError(`Failed to generate accompaniment using Gemini API: ${error.message}`);
+    } else {
+      console.error('Unknown Gemini API Error:', error);
+      throw new ApiError('Failed to generate accompaniment using Gemini API due to an unknown error.');
+    }
+  }
+  
+  if (!geminiResponseText) {
+    throw new ApiError('Received no text response from Gemini API.');
+  }
 
-  return {
-    melody,
-    accompaniment: JSON.parse(response.text?.slice(7, -4) as string) as Melody,
-  };
+  // console.log(geminiResponseText); // Log for debugging API response
+
+  try {
+    // Attempt to parse the response, assuming it might be wrapped in markdown (```json ... ```)
+    const jsonMatch = geminiResponseText.match(/```json\s*([\s\S]*?)\s*```/);
+    const jsonToParse = jsonMatch ? jsonMatch[1] : geminiResponseText;
+    const parsedAccompaniment = JSON.parse(jsonToParse) as Melody;
+    
+    return {
+      melody,
+      accompaniment: parsedAccompaniment,
+    };
+  } catch (parseError: unknown) {
+    console.error('Failed to parse Gemini API response as JSON:', geminiResponseText, parseError);
+    throw new GenerationError(`Failed to parse accompaniment from API response. Raw response: "${geminiResponseText}"`);
+  }
 }
 
 type Melody = { note: string; rhythm: number }[];
 
 function generateMelody(
   progression: string[],
-  key: string,
+  keySignature: string, // Renamed for clarity
   meter: string,
   minRange: string,
   maxRange: string,
-) {
-  const keyObj = Key.majorKey(key);
+): Melody { // Added return type
+  const keyDetails = Key.majorKey(keySignature) ?? Key.minorKey(keySignature);
+  if (!keyDetails || !keyDetails.tonic) {
+    throw new InvalidInputError(`Invalid key signature for melody generation: ${keySignature}`);
+  }
+
   const melody: Melody = [];
-  const startingNote = Key.majorKey(key).scale[0] + 4; // eg. C4
+  // Ensure startingNote is valid, provide a fallback octave if needed
+  const tonic = keyDetails.scale[0];
+  const startingNoteOctave = Note.get(tonic + '4').oct === undefined ? 4 : Note.get(tonic + '4').oct;
+  const startingNote = tonic + (startingNoteOctave ?? 4);
 
-  progression.forEach((chord, i) => {
-    const chordInfo = getChordInfoFromRoman(chord, key);
-    const rhythm = generateRhythm(meter, 1);
-    if (i === 0) melody.push({ note: startingNote, rhythm: rhythm.shift()!! }); // Assert that rhythm is not empty
 
-    rhythm.forEach((noteLength, j) => {
-      const lastNote = Note.get(melody[melody.length - 1].note);
-      let diatonicNotes = [];
+  progression.forEach((chordSymbol, i) => {
+    let chordInfo;
+    try {
+      chordInfo = getChordInfoFromRoman(chordSymbol, keySignature);
+    } catch (e) {
+      // If a specific chord symbol fails, log and skip trying to use its notes,
+      // but continue generating rhythm and diatonic melody for that segment.
+      console.warn(`generateMelody: Error processing Roman numeral "${chordSymbol}" for chord-based notes. Error: ${(e as Error).message}. Will use diatonic notes.`);
+      chordInfo = null; // Allow generation to proceed with diatonic context
+    }
 
-      for (let i = -7; i <= 7; i++) {
+    let rhythm;
+    try {
+      rhythm = generateRhythm(meter, 3); // Using moderate complexity for melody rhythm
+    } catch (e) {
+        console.error(`generateMelody: Failed to generate rhythm for meter "${meter}". Error: ${(e as Error).message}`);
+        throw new GenerationError(`Failed to generate rhythm for meter "${meter}": ${(e as Error).message}`);
+    }
+    
+    if (i === 0) {
+      const firstRhythm = rhythm.shift();
+      if (!firstRhythm) {
+        throw new GenerationError("Failed to get first rhythm value for starting note.");
+      }
+      melody.push({ note: startingNote, rhythm: firstRhythm });
+    }
+
+    rhythm.forEach((noteLength) => {
+      const lastMelodyNote = melody[melody.length - 1]?.note;
+      if (!lastMelodyNote) { // Should not happen after first note is added
+        throw new GenerationError("Cannot determine last melody note for diatonic context.");
+      }
+      const lastNoteDetails = Note.get(lastMelodyNote);
+      if (lastNoteDetails.empty) {
+         throw new MusicTheoryError(`Invalid last note in melody: ${lastMelodyNote}`);
+      }
+
+
+      const diatonicNotes: (string | null)[] = [];
+      for (let step = -3; step <= 3; step++) { // Reduced range for more focused choices
         diatonicNotes.push(
           transposeDiatonicallyBySteps(
-            lastNote.name,
-            i,
-            `${keyObj.tonic} ${keyObj.type}`,
+            lastNoteDetails.name,
+            step,
+            `${keyDetails.tonic} ${keyDetails.type}`,
           ),
         );
       }
+      const validDiatonicNotes = diatonicNotes.filter(n => n !== null) as string[];
 
-      const possibleNotes = weightedRandomChoice([
+
+      const choices: { item: string[]; weight: number }[] = [
         {
-          item: chordInfo?.noteNames.map(
-            (noteName) =>
-              putInRange(
-                Note.get(noteName).letter + lastNote.oct,
-                minRange,
-                maxRange,
-              ), // Proper note name, ex. C4, D4, etc.
+          item: validDiatonicNotes.map(noteName =>
+            putInRange(noteName, minRange, maxRange)
           ),
-          weight: 2,
-        },
-        {
-          item: diatonicNotes.map((noteName) =>
-            putInRange(noteName ?? keyObj.scale[0] + 4, minRange, maxRange),
-          ),
-          weight: 1,
-        },
-      ]) as string[];
+          weight: 1, // Base weight for diatonic movement
+        }
+      ];
 
-      console.log(possibleNotes);
+      if (chordInfo && chordInfo.noteNames) {
+        choices.push({
+          item: chordInfo.noteNames.map(noteName => {
+            const noteDetails = Note.get(noteName);
+            const lastOctave = lastNoteDetails.oct ?? 4; // Fallback octave
+            return putInRange(noteDetails.letter + lastOctave, minRange, maxRange);
+          }),
+          weight: 2, // Higher weight for chord tones
+        });
+      }
+      
+      const possibleNotes = weightedRandomChoice(choices.filter(c => c.item.length > 0));
 
+
+      // console.log(possibleNotes); // Debugging
+
+      // Handle the case where possibleNotes might be null or empty
+      let nextMelodyNote: string;
+      if (possibleNotes && possibleNotes.length > 0) {
+        nextMelodyNote = getNextNote(melody, key, possibleNotes);
+      } else {
+        // Fallback strategy if no possible notes were determined (e.g., all weights were zero, or items were empty)
+        // Revert to the last note or a simple step from it, or tonic.
+        console.warn(`generateMelody: No possible notes from weighted choice for chord ${chord}. Using fallback.`);
+        const fallbackLastNote = melody[melody.length -1]?.note ?? (keyObj.scale[0] + '4');
+        // Attempt a simple step up or down, or just use the fallbackLastNote
+        nextMelodyNote = getStepUp(fallbackLastNote, key) || fallbackLastNote; 
+        // Ensure the fallback is also within range (important if lastNote was near boundary)
+        nextMelodyNote = putInRange(nextMelodyNote, minRange, maxRange);
+      }
+      
       melody.push({
-        note: getNextNote(melody, key, possibleNotes),
+        note: nextMelodyNote,
         rhythm: noteLength,
       });
     });
   });
 
-  console.log('melody', melody);
+  // console.log('melody', melody); // Debugging
+  if (melody.length === 0) {
+    // This might happen if the progression is empty and the initial note wasn't added.
+    throw new GenerationError("Failed to generate any notes for the melody.");
+  }
   return melody;
 }
 
+
 function getNextNote(
   currentMelody: Melody,
-  key: string,
-  possibleNotes: string[],
-) {
-  const lastNote = Note.get(currentMelody[currentMelody.length - 1].note);
-  const noteBeforeLast = Note.get(
-    currentMelody[currentMelody.length - 2]?.note,
-  );
-  if (isLeap(lastNote.name, noteBeforeLast.name)) {
-    return getIntervalDirection(noteBeforeLast.name, lastNote.name) === 'asc'
-      ? getStepDown(lastNote.name, key)
-      : getStepUp(lastNote.name, key);
-  } else {
-    const randomIndex = Math.floor(Math.random() * possibleNotes.length);
-
-    return possibleNotes[randomIndex];
+  keySignature: string, // Renamed for clarity
+  possibleNotes: string[], // Assumed to be non-empty and validated by caller
+): string { // Added return type
+  if (possibleNotes.length === 0) {
+    // Fallback, though caller should ideally handle empty possibleNotes.
+    console.warn("getNextNote called with no possible notes. Returning last melody note or tonic.");
+    return currentMelody[currentMelody.length - 1]?.note ?? (Key.majorKey(keySignature)?.tonic ?? 'C') + '4';
   }
+
+  const lastNoteName = currentMelody[currentMelody.length - 1].note;
+  const lastNoteDetails = Note.get(lastNoteName);
+  if (lastNoteDetails.empty) {
+    throw new MusicTheoryError(`Invalid last note in getNextNote: ${lastNoteName}`);
+  }
+
+  const noteBeforeLastName = currentMelody[currentMelody.length - 2]?.note;
+
+  if (noteBeforeLastName) {
+    const noteBeforeLastDetails = Note.get(noteBeforeLastName);
+    if (noteBeforeLastDetails.empty) {
+        throw new MusicTheoryError(`Invalid note before last in getNextNote: ${noteBeforeLastName}`);
+    }
+    if (isLeap(lastNoteDetails.name, noteBeforeLastDetails.name)) {
+      const direction = getIntervalDirection(noteBeforeLastDetails.name, lastNoteDetails.name);
+      // Attempt to step in the opposite direction of the leap
+      const nextNote = direction === 'asc'
+        ? getStepDown(lastNoteDetails.name, keySignature)
+        : getStepUp(lastNoteDetails.name, keySignature);
+      // If the counter-step is valid and in possibleNotes, prefer it. Otherwise, random choice.
+      if (nextNote && possibleNotes.includes(nextNote)) return nextNote;
+    }
+  }
+  
+  // Default to random choice from the provided valid & ranged possible notes
+  const randomIndex = Math.floor(Math.random() * possibleNotes.length);
+  return possibleNotes[randomIndex];
 }
+
 
 function getIntervalDirection(
-  firstNote: string,
-  secondNote: string,
-): 'asc' | 'desc' {
-  const interval = Interval.distance(firstNote, secondNote);
-  const intervalDistance = Interval.num(interval);
+  firstNoteName: string, // Renamed for clarity
+  secondNoteName: string, // Renamed for clarity
+): 'asc' | 'desc' | 'same' { // Added 'same' for completeness
+  const firstMidi = Note.midi(firstNoteName);
+  const secondMidi = Note.midi(secondNoteName);
 
-  return intervalDistance > 0 ? 'asc' : 'desc';
+  if (firstMidi === null || secondMidi === null) {
+    throw new MusicTheoryError(`Invalid note names for getIntervalDirection: ${firstNoteName}, ${secondNoteName}`);
+  }
+
+  if (secondMidi > firstMidi) return 'asc';
+  if (secondMidi < firstMidi) return 'desc';
+  return 'same';
 }
 
-function isLeap(firstNote: string, secondNote: string) {
-  const interval = Interval.distance(firstNote, secondNote);
-  const intervalDistance = Interval.num(interval);
-
-  return intervalDistance > 2 || intervalDistance < -2; // Greater than a major second is considered a leap
+function isLeap(firstNoteName: string, secondNoteName: string): boolean { // Renamed parameters
+  const interval = Interval.distance(firstNoteName, secondNoteName); // Tonal.Interval can handle note names
+  const semitones = Interval.semitones(interval);
+  if (semitones === undefined) { // Should not happen with valid note names
+    throw new MusicTheoryError(`Could not determine semitones for interval between ${firstNoteName} and ${secondNoteName}`);
+  }
+  // A leap is typically more than a major second (2 semitones)
+  return Math.abs(semitones) > 2;
 }
 
-function getStepUp(note: string, key: string) {
-  const currNote = Note.get(note);
-  const scale = Key.majorKey(key).scale;
-  const currentIndex = scale.indexOf(currNote.letter);
+function getStepUp(noteName: string, keySignature: string): string | null { // Renamed parameters, added null return
+  const currNoteDetails = Note.get(noteName);
+  if (currNoteDetails.empty) {
+    throw new MusicTheoryError(`Invalid note for getStepUp: ${noteName}`);
+  }
 
-  // Get the next note in the scale, wrapping around if necessary.
-  const nextIndex = (currentIndex + 1) % scale.length;
-  const stepUpLetter = scale[nextIndex];
+  const keyObj = Key.majorKey(keySignature) ?? Key.minorKey(keySignature);
+  if (!keyObj || !keyObj.tonic) {
+    throw new InvalidInputError(`Invalid key for getStepUp: ${keySignature}`);
+  }
+  const scale = keyObj.scale;
+  const currentPcIndex = scale.indexOf(currNoteDetails.pc);
+  if (currentPcIndex === -1) {
+    console.warn(`getStepUp: Note ${noteName} (PC: ${currNoteDetails.pc}) not in scale ${keySignature}. Transposing chromatically.`);
+    return Note.transpose(noteName, 'm2'); // Fallback to chromatic step if PC not in scale
+  }
 
-  // Calculate the interval between the current note and the target note in the scale.
-  const interval = Note.distance(currNote.letter, stepUpLetter);
-
-  // Transpose the note upward by the determined interval.
-  return Note.transpose(currNote.name, interval);
+  const nextPcIndex = (currentPcIndex + 1) % scale.length;
+  const nextPc = scale[nextPcIndex];
+  
+  // Determine octave: if nextPc is lower than currentPc (e.g. B to C), increment octave.
+  let octave = currNoteDetails.oct ?? 4; // Fallback octave
+  if (Tonal.Note.chroma(nextPc)! < Tonal.Note.chroma(currNoteDetails.pc)!) {
+    octave++;
+  }
+  return nextPc + octave;
 }
 
-function getStepDown(note: string, key: string) {
-  const currNote = Note.get(note);
-  const scale = Key.majorKey(key).scale;
-  const stepDownLetter = scale.slice(scale.indexOf(currNote.letter) - 1)[0];
-  const interval = Note.distance(stepDownLetter, currNote.letter);
+function getStepDown(noteName: string, keySignature: string): string | null { // Renamed, added null return
+  const currNoteDetails = Note.get(noteName);
+   if (currNoteDetails.empty) {
+    throw new MusicTheoryError(`Invalid note for getStepDown: ${noteName}`);
+  }
 
-  return Note.transpose(currNote.name, `-${interval}`);
+  const keyObj = Key.majorKey(keySignature) ?? Key.minorKey(keySignature);
+   if (!keyObj || !keyObj.tonic) {
+    throw new InvalidInputError(`Invalid key for getStepDown: ${keySignature}`);
+  }
+  const scale = keyObj.scale;
+  const currentPcIndex = scale.indexOf(currNoteDetails.pc);
+
+  if (currentPcIndex === -1) {
+    console.warn(`getStepDown: Note ${noteName} (PC: ${currNoteDetails.pc}) not in scale ${keySignature}. Transposing chromatically.`);
+    return Note.transpose(noteName, '-m2'); // Fallback to chromatic step
+  }
+
+  const prevPcIndex = (currentPcIndex - 1 + scale.length) % scale.length;
+  const prevPc = scale[prevPcIndex];
+
+  let octave = currNoteDetails.oct ?? 4;
+  if (Tonal.Note.chroma(prevPc)! > Tonal.Note.chroma(currNoteDetails.pc)!) {
+    octave--;
+  }
+  return prevPc + octave;
 }
+
 
 /**
  * Transposes a note by a given number of diatonic steps within a specified scale.
@@ -243,68 +418,55 @@ function transposeDiatonicallyBySteps(
   intervalQuantity: number,
   scaleName = 'C major',
 ) {
-  // Validate interval quantity
-  if (
-    typeof intervalQuantity !== 'number' ||
-    !Number.isInteger(intervalQuantity)
-  ) {
-    console.error(
-      'Invalid interval quantity:',
-      intervalQuantity,
-      '(must be an integer)',
-    );
-    return null;
+  // Validate interval quantity (integer)
+  if (!Number.isInteger(intervalQuantity)) {
+    // console.warn // console.error is too strong for a utility function, let caller decide.
+    throw new InvalidInputError(`Invalid interval quantity: ${intervalQuantity} (must be an integer)`);
   }
 
   // Validate and parse the input note
-  const startNote = Note.get(noteName);
-  if (!startNote || !startNote.pc || startNote.oct === undefined) {
-    console.error('Invalid input note:', noteName);
-    return null;
+  const startNoteDetails = Note.get(noteName);
+  if (startNoteDetails.empty || !startNoteDetails.pc || startNoteDetails.oct === undefined) {
+    throw new MusicTheoryError(`Invalid input note for transposition: ${noteName}`);
   }
 
   // Get the notes of the specified scale
-  const scale = Scale.get(scaleName);
-  if (!scale || !scale.notes || scale.notes.length === 0) {
-    console.error('Invalid scale name or empty scale:', scaleName);
-    return null;
+  const scaleDetails = Scale.get(scaleName);
+  if (scaleDetails.empty || scaleDetails.notes.length === 0) {
+     throw new MusicTheoryError(`Invalid or empty scale for transposition: ${scaleName}`);
   }
-  const scaleNotes = scale.notes; // e.g., ['C', 'D', 'E', 'F', 'G', 'A', 'B'] for C major
+  const scaleNotes = scaleDetails.notes;
   const scaleSize = scaleNotes.length;
 
   // Find the index of the starting note's pitch class in the scale
-  const pcIndex = scaleNotes.indexOf(startNote.pc);
+  const pcIndex = scaleNotes.indexOf(startNoteDetails.pc);
   if (pcIndex === -1) {
-    console.error(
-      `Pitch class ${startNote.pc} not found in scale ${scaleName}`,
-    );
-    return null; // Pitch class not diatonic to the scale
+    // This might be a common case if a chromatic note is passed with a diatonic scale.
+    // Depending on desired behavior, could throw, or try to find closest diatonic.
+    // For now, let's consider it an issue if exact PC not found.
+    console.warn(`transposeDiatonicallyBySteps: Pitch class ${startNoteDetails.pc} (from note ${noteName}) not found in scale ${scaleName}. Returning null.`);
+    return null; 
   }
 
   // Calculate the target index in the scale notes array
-  // Handles positive/negative intervalQuantity and wrapping around the scale
-  const targetPcIndex =
-    (pcIndex + (intervalQuantity % scaleSize) + scaleSize) % scaleSize;
-
-  // Get the target pitch class
+  const targetPcIndex = (pcIndex + intervalQuantity % scaleSize + scaleSize) % scaleSize;
   const targetPc = scaleNotes[targetPcIndex];
 
-  // Calculate the change in octaves based on how many times we wrapped around the scale
+  // Calculate the change in octaves
   const octaveChange = Math.floor((pcIndex + intervalQuantity) / scaleSize);
+  const targetOctave = startNoteDetails.oct + octaveChange;
 
-  // Calculate the target octave
-  const targetOctave = startNote.oct + octaveChange;
+  const resultNoteName = targetPc + targetOctave;
+  const resultNoteDetails = Note.get(resultNoteName);
 
-  // Construct the final note name
-  const resultNote = targetPc + targetOctave;
-
-  // Validate the result note (optional, but good practice)
-  if (!Note.get(resultNote).name) {
-    console.error('Failed to construct valid result note:', resultNote);
+  // Validate the result note
+  if (resultNoteDetails.empty) {
+    // This should be rare if logic is correct, but good to check.
+    console.warn(`transposeDiatonicallyBySteps: Constructed an invalid note "${resultNoteName}".`);
     return null;
   }
 
-  return resultNote;
+  return resultNoteName;
 }
 
 /**
@@ -324,19 +486,18 @@ function isInRange(
   const minMidi = Note.midi(minRangeNote);
   const maxMidi = Note.midi(maxRangeNote);
 
-  // Check for invalid inputs
+  const noteMidi = Note.midi(noteName);
+  const minMidi = Note.midi(minRangeNote);
+  const maxMidi = Note.midi(maxRangeNote);
+
   if (noteMidi === null || minMidi === null || maxMidi === null) {
-    console.warn(
-      `Invalid input for isInRange: note=${noteName}, min=${minRangeNote}, max=${maxRangeNote}`,
-    );
-    return false;
+    // console.warn // Potentially too noisy for a utility; caller might handle.
+    // Consider if this should throw InvalidInputError if strictness is required.
+    return false; // If any note is invalid, it's not "in range"
   }
-  // Ensure min is not greater than max (though ideally validated earlier)
   if (minMidi > maxMidi) {
-    console.warn(
-      `Min range ${minRangeNote} is higher than max range ${maxRangeNote} in isInRange.`,
-    );
-    return false; // Or handle as appropriate
+    // console.warn(`isInRange: Min range ${minRangeNote} is higher than max range ${maxRangeNote}.`);
+    return false; // Invalid range definition
   }
 
   return noteMidi >= minMidi && noteMidi <= maxMidi;
@@ -362,16 +523,13 @@ function putInRange(
 
   // --- Input Validation ---
   if (originalMidi === null || minMidi === null || maxMidi === null) {
-    console.warn(
-      `Invalid input for putInRange: note=${noteName}, min=${minRangeNote}, max=${maxRangeNote}. Returning original.`,
-    );
-    return noteName; // Return original note if any input is invalid
+    // console.warn(`putInRange: Invalid MIDI for note "${noteName}", min "${minRangeNote}", or max "${maxRangeNote}". Returning original.`);
+    // This could throw InvalidInputError if strict behavior is preferred.
+    return noteName; 
   }
   if (minMidi > maxMidi) {
-    console.warn(
-      `Min range ${minRangeNote} > max range ${maxRangeNote} in putInRange. Returning original note.`,
-    );
-    return noteName; // Cannot reasonably place in an invalid range
+    // console.warn(`putInRange: Min range ${minRangeNote} is higher than max range ${maxRangeNote}. Returning original note.`);
+    return noteName; 
   }
 
   // --- Check if already in range ---
@@ -388,10 +546,8 @@ function putInRange(
     while (currentMidi < minMidi) {
       const nextNote = Note.transpose(currentNote, '8P'); // 8P = Perfect Octave up
       const nextMidi = Note.midi(nextNote);
-      if (nextMidi === null) {
-        // Should not happen with valid input/transpose
-        console.error(`Error transposing ${currentNote} up by octave.`);
-        return minRangeNote; // Fallback to min range note
+      if (nextMidi === null) { // Should be very rare with valid octave transposition
+        throw new MusicTheoryError(`Error transposing ${currentNote} up by octave in putInRange.`);
       }
       // Check if transposing up *overshot* the max range
       if (nextMidi > maxMidi) {
@@ -418,9 +574,8 @@ function putInRange(
     while (currentMidi > maxMidi) {
       const nextNote = Note.transpose(currentNote, '-8P'); // -8P = Perfect Octave down
       const nextMidi = Note.midi(nextNote);
-      if (nextMidi === null) {
-        console.error(`Error transposing ${currentNote} down by octave.`);
-        return maxRangeNote; // Fallback to max range note
+      if (nextMidi === null) { // Should be very rare
+        throw new MusicTheoryError(`Error transposing ${currentNote} down by octave in putInRange.`);
       }
       // Check if transposing down *undershot* the min range
       if (nextMidi < minMidi) {

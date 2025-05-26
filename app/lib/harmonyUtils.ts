@@ -2,24 +2,45 @@
 import * as Tonal from 'tonal';
 import { DEFAULT_OCTAVE } from './constants';
 import { ChordInfo } from './types';
+import { MusicTheoryError, InvalidInputError } from './errors';
+
+const ROMAN_MAP: Record<string, number> = {
+  I: 0,
+  II: 1,
+  III: 2,
+  IV: 3,
+  V: 4,
+  VI: 5,
+  VII: 6,
+};
 
 /**
- * Parses a Roman numeral with optional inversion notation.
- * @param roman - Roman numeral string (e.g., "V", "V7", "ii6", "IV64", "V/3").
- * @returns Object with base Roman numeral and desired bass interval, or null if invalid.
+ * Parses a Roman numeral string to separate the base numeral from inversion/alteration.
+ * Handles figured bass (e.g., "ii6", "IV64") and slash notation (e.g., "V/3", "V7/5").
+ * The TODO about 'M' or 'm' prefixes for bassInterval was evaluated: Tonal.transpose
+ * generally infers interval quality correctly based on the chord's root and the interval
+ * number (e.g., "3" will be major or minor based on context). Explicitly adding 'M'/'m'
+ * here is usually unnecessary and could conflict with Tonal.js's internal logic.
+ * The primary role of bassInterval is to identify the *scale degree* of the bass note
+ * relative to the chord root, not necessarily its precise quality independently.
+ *
+ * @param romanWithInversion - The full Roman numeral string.
+ * @returns Object with base Roman numeral and bass interval string, or null if invalid.
  */
-function parseRomanNumeral(roman: string): {
+function parseRomanNumeral(romanWithInversion: string): {
   baseRoman: string;
-  bassInterval: string | null;
+  bassInterval: string | null; // e.g., "1", "3", "5", "7", "b3", "#5"
 } | null {
-  // Match figured bass (6, 64, 7, 65, 43, 42, 2) or slash notation (/3, /5, /b3, /#5 etc.)
-  const figuredBassMatch = roman.match(
+  // Regex for figured bass (e.g., 6, 64, 7, 65, 43, 42, 2)
+  // Ensures figure is at the end and not part of a chord name like 'Cmaj7'
+  const figuredBassMatch = romanWithInversion.match(
     /^(.*?)(?:(64|65|43|42|6|7|2))(?![a-zA-Z#b])$/,
-  ); // Ensure figure is at the end
-  const slashMatch = roman.match(/^(.*?)\/([#b]?\d+)$/);
+  );
+  // Regex for slash notation (e.g., /3, /5, /b3, /#5)
+  const slashMatch = romanWithInversion.match(/^(.*?)\/([#b]?\d+)$/);
 
   let baseRoman: string;
-  let bassInterval: string | null = null;
+  let bassInterval: string | null = '1'; // Default to root position (1st degree of the chord)
 
   if (figuredBassMatch) {
     baseRoman = figuredBassMatch[1];
@@ -27,433 +48,566 @@ function parseRomanNumeral(roman: string): {
     switch (figure) {
       case '6':
         bassInterval = '3';
-        break; // 1st inversion triad or 7th chord
+        break; // 1st inversion (triad or 7th)
       case '64':
         bassInterval = '5';
-        break; // 2nd inversion triad
-      case '7':
-        bassInterval = '1';
-        break; // Root position 7th (often implied, but can be explicit)
+        break; // 2nd inversion (triad)
+      // case '7': bassInterval = '1'; break; // Root position 7th (already default)
       case '65':
         bassInterval = '3';
-        break; // 1st inversion 7th
+        break; // 1st inversion 7th chord
       case '43':
         bassInterval = '5';
-        break; // 2nd inversion 7th
+        break; // 2nd inversion 7th chord
       case '42':
       case '2':
         bassInterval = '7';
-        break; // 3rd inversion 7th
+        break; // 3rd inversion 7th chord
       default:
-        bassInterval = '1'; // Should not happen with regex, but default to root
+        // Includes '7' which implies root position if no other figures
+        bassInterval = '1';
     }
-    // Add 'M' or 'm' prefix if needed for interval quality based on chord type?
-    // Tonal.transpose usually handles this ok if the base chord symbol is correct.
   } else if (slashMatch) {
     baseRoman = slashMatch[1];
     bassInterval = slashMatch[2]; // e.g., "3", "5", "b3", "#5"
-    // Need to translate this number/accidental to a Tonal interval string
-    // For simplicity now, assume 1, 3, 5, 7 correspond to P1, M/m3, P5, M/m7
-    // Tonal might interpret "3" correctly based on context, let's try
-    if (bassInterval === '3')
-      bassInterval = '3'; // Keep simple for now
-    else if (bassInterval === '5') bassInterval = '5';
-    else if (bassInterval === '7') bassInterval = '7';
-    // Add more complex slash parsing if needed (e.g., /b3 -> m3?)
-    else bassInterval = '1'; // Fallback for unrecognized slash
+    // Tonal.transpose can usually handle "3", "b3", "5", "#5", "7" directly.
+    // No complex translation needed here for Tonal.js.
   } else {
-    baseRoman = roman;
-    bassInterval = '1'; // Root position default
+    baseRoman = romanWithInversion;
+    // bassInterval remains '1' (root position)
   }
 
   if (!baseRoman) {
-    console.warn(`Could not parse base Roman numeral from "${roman}"`);
-    return null;
+    // This case should ideally be rare if regex are comprehensive.
+    // If it occurs, it's likely an unparsable Roman numeral format.
+    throw new MusicTheoryError(
+      `parseRomanNumeral: Could not parse base Roman numeral from "${romanWithInversion}". Check format.`,
+    );
   }
 
   return { baseRoman, bassInterval };
 }
 
 /**
- * Gets the MIDI notes, note names (e.g., "C4"), and required bass note
- * pitch class based on a chord's Roman numeral in a given key.
- * Handles inversions indicated by figured bass or slash notation.
- *
- * @param fullRomanWithInversion - Roman numeral symbol (e.g., "V7", "ii6", "IV64", "V/3").
- * @param keyName - Key signature (e.g., "C", "Gm").
- * @returns Object with:
- * - `notes`: array of MIDI notes for the chord in root position (sorted).
- * - `noteNames`: array of note names with octaves (e.g., ["C4", "E4", "G4"]) for the chord in root position (sorted).
- * - `requiredBassPc`: pitch class (0-11) of the required bass note for the inversion, or null if root position/error.
- * Returns null if a fundamental error occurs.
+ * Retrieves key details (tonic, type, chords) using Tonal.js.
+ * @param keyName - Key signature (e.g., "C", "Gm", "F#maj", "Dbmin").
+ * @returns Tonal key object or null if key is invalid.
  */
-export function getChordInfoFromRoman(
-  fullRomanWithInversion: string,
+function getKeyDetails(
   keyName: string,
+): ReturnType<typeof Tonal.Key.majorKey> | ReturnType<typeof Tonal.Key.minorKey> | null {
+  let keyDetails = Tonal.Key.majorKey(keyName);
+  if (!keyDetails || !keyDetails.tonic) {
+    keyDetails = Tonal.Key.minorKey(keyName);
+  }
+
+  if (!keyDetails || !keyDetails.tonic) {
+    // This indicates the keyName provided was not recognized by Tonal.js
+    throw new InvalidInputError(`getKeyDetails: Could not get valid key details for key "${keyName}". Key not recognized.`);
+  }
+  return keyDetails;
+}
+
+/**
+ * Determines the initial diatonic chord symbol based on the key and Roman numeral degree.
+ * @param baseRomanUpper - Uppercase Roman numeral (e.g., "I", "II", "V").
+ * @param scaleDegreeIndex - Index of the Roman numeral (0-6).
+ * @param keyDetails - Tonal key object.
+ * @param keyName - Original key name for logging.
+ * @returns Initial diatonic chord symbol (e.g., "CM", "dm", "G") or null.
+ */
+function getInitialDiatonicChordSymbol(
+  baseRomanUpper: string,
+  scaleDegreeIndex: number,
+  keyDetails: NonNullable<ReturnType<typeof getKeyDetails>>, // Ensure keyDetails is not null
+  keyName: string,
+): string | null {
+  const keyType = keyDetails.type;
+  let diatonicChords: readonly string[] | undefined;
+  let diatonicHarmonicChords: readonly string[] | undefined;
+
+  if (keyType === 'major') {
+    diatonicChords = keyDetails.chords;
+  } else {
+    // For minor keys, start with natural minor, then consider harmonic for V and vii.
+    diatonicChords = keyDetails.natural.chords;
+    diatonicHarmonicChords = keyDetails.harmonic.chords;
+  }
+
+  if (!diatonicChords || scaleDegreeIndex >= diatonicChords.length) {
+    throw new MusicTheoryError(
+      `getInitialDiatonicChordSymbol: Scale degree index ${scaleDegreeIndex} (${baseRomanUpper}) is out of bounds for key "${keyName}". Valid range is 0-${(diatonicChords?.length ?? 0) -1}.`,
+    );
+  }
+
+  let initialSymbol = diatonicChords[scaleDegreeIndex];
+
+  // In minor keys, V and vii are typically derived from the harmonic minor scale.
+  if (keyType === 'minor') {
+    if (
+      scaleDegreeIndex === ROMAN_MAP.V && // V degree
+      diatonicHarmonicChords &&
+      diatonicHarmonicChords.length > scaleDegreeIndex
+    ) {
+      initialSymbol = diatonicHarmonicChords[scaleDegreeIndex]; // Usually V major
+    } else if (
+      scaleDegreeIndex === ROMAN_MAP.VII && // VII degree
+      diatonicHarmonicChords &&
+      diatonicHarmonicChords.length > scaleDegreeIndex
+    ) {
+      initialSymbol = diatonicHarmonicChords[scaleDegreeIndex]; // Usually vii diminished
+    }
+  }
+  return initialSymbol;
+}
+
+/**
+ * Applies explicit quality (dim, aug, M, m), 7th (7, ø, °), and other modifications
+ * to a base chord symbol.
+ * @param currentChordSymbol - The current chord symbol (e.g., "dm", "G").
+ * @param baseRomanInput - The base Roman numeral from parsing (e.g., "ii", "V7", "vii°").
+ * @param keyDetails - Tonal key object.
+ * @param scaleDegreeIndex - Index of the Roman numeral (0-6).
+ * @returns The modified chord symbol (e.g., "dm7", "G7", "b°7") or the original if no valid modifications.
+ */
+function applyChordModifications(
+  currentChordSymbol: string,
+  baseRomanInput: string,
+  keyDetails: NonNullable<ReturnType<typeof getKeyDetails>>,
+  scaleDegreeIndex: number,
+): string {
+  let finalChordSymbol = currentChordSymbol;
+  const keyType = keyDetails.type;
+  const currentChordDetails = Tonal.Chord.get(currentChordSymbol);
+  if (currentChordDetails.empty || !currentChordDetails.tonic) {
+    // This implies the initial diatonic symbol was somehow invalid, which is a theory/logic error.
+    throw new MusicTheoryError(
+      `applyChordModifications: Invalid initial diatonic chord symbol "${currentChordSymbol}" for Roman "${baseRomanInput}". Cannot apply further modifications.`,
+    );
+  }
+  const tonic = currentChordDetails.tonic; // Tonic is guaranteed here by the check above
+
+  // --- 1. Explicit Quality Modifiers (triads: dim, o, +, aug, M, m) ---
+  // These usually override the diatonic quality.
+  const qualityMatch = baseRomanInput.match(/(dim|o|\+|aug|M|m|maj|min)$/i);
+  const requestedQualitySymbol = qualityMatch ? qualityMatch[1].toLowerCase() : null;
+
+  if (requestedQualitySymbol) {
+    let qualityToApply = '';
+    if (['maj', 'M'].includes(requestedQualitySymbol)) qualityToApply = 'M'; // Major triad
+    else if (['min', 'm'].includes(requestedQualitySymbol)) qualityToApply = 'm'; // Minor triad
+    else if (['dim', 'o'].includes(requestedQualitySymbol)) qualityToApply = 'dim'; // Diminished triad
+    else if (['aug', '+'].includes(requestedQualitySymbol)) qualityToApply = 'aug'; // Augmented triad
+
+    if (qualityToApply) {
+      const potentialNewSymbol = tonic + qualityToApply;
+      const checkChord = Tonal.Chord.get(potentialNewSymbol);
+      if (!checkChord.empty) {
+        finalChordSymbol = checkChord.symbol;
+      } else {
+        // This means the requested quality (e.g. "dim", "aug") is incompatible with the tonic.
+        // This could be a user error in Roman numeral (e.g., "Cdim" in G major's "IVdim") or a logic gap.
+        console.warn( // Keep as warn because the function can often proceed with the diatonic quality.
+          `applyChordModifications: Could not apply explicit quality "${qualityToApply}" to tonic "${tonic}" for Roman "${baseRomanInput}". Using diatonic quality.`,
+        );
+      }
+    }
+  }
+
+  // --- 2. Adding 7ths (if requested) ---
+  const requestedSeventh = baseRomanInput.includes('7');
+  const requestedHalfDim =
+    baseRomanInput.includes('ø') || baseRomanInput.includes('hd');
+  const requestedFullDim =
+    baseRomanInput.includes('°') ||
+    (baseRomanInput.toLowerCase().includes('dim') && requestedSeventh); // "dim7" or "°7"
+
+  if (requestedSeventh) {
+    const currentTriadSymbol = finalChordSymbol; // Symbol after quality modification
+    const triadDetails = Tonal.Chord.get(currentTriadSymbol); // currentTriadSymbol is after quality modification
+    if (triadDetails.empty || !triadDetails.tonic) {
+      // This implies the quality modification step resulted in an invalid chord.
+      throw new MusicTheoryError(
+        `applyChordModifications: Cannot add 7th because the modified triad symbol "${currentTriadSymbol}" (from Roman "${baseRomanInput}") is invalid.`,
+      );
+    }
+
+    let seventhChordType = '';
+
+    if (requestedHalfDim) {
+      seventhChordType = 'm7b5'; // Half-diminished 7th (e.g., Cø7 -> Cm7b5)
+    } else if (requestedFullDim) {
+      seventhChordType = 'dim7'; // Fully-diminished 7th (e.g., C°7 -> Cdim7)
+    } else {
+      // Infer 7th type based on diatonic function and common practice
+      if (keyType === 'major') {
+        // I and IV in major are typically major 7ths.
+        if (scaleDegreeIndex === ROMAN_MAP.I || scaleDegreeIndex === ROMAN_MAP.IV) {
+          seventhChordType = 'maj7'; // e.g., CMaj7, FMaj7
+        }
+        // V in major is typically a dominant 7th.
+        else if (scaleDegreeIndex === ROMAN_MAP.V) {
+          seventhChordType = '7'; // e.g., G7
+        }
+        // ii, iii, vi in major are typically minor 7ths.
+        else if (
+          scaleDegreeIndex === ROMAN_MAP.II ||
+          scaleDegreeIndex === ROMAN_MAP.III ||
+          scaleDegreeIndex === ROMAN_MAP.VI
+        ) {
+          seventhChordType = 'm7'; // e.g., Dm7, Em7, Am7
+        }
+        // vii in major is typically a half-diminished 7th (m7b5).
+        else if (scaleDegreeIndex === ROMAN_MAP.VII) {
+          seventhChordType = 'm7b5'; // e.g., Bm7b5
+        }
+      } else {
+        // Minor key context (often uses harmonic minor for V and vii, natural/melodic for others)
+        // V in minor is typically a dominant 7th (from harmonic minor).
+        if (scaleDegreeIndex === ROMAN_MAP.V) {
+          seventhChordType = '7'; // e.g., G7 in C minor
+        }
+        // vii in minor is typically a fully-diminished 7th (from harmonic minor).
+        else if (scaleDegreeIndex === ROMAN_MAP.VII) {
+          seventhChordType = 'dim7'; // e.g., Bdim7 in C minor
+        }
+        // ii in minor is often half-diminished (m7b5).
+        else if (scaleDegreeIndex === ROMAN_MAP.II) {
+          seventhChordType = 'm7b5'; // e.g., Dm7b5 in C minor
+        }
+        // i in minor is typically a minor 7th.
+        else if (scaleDegreeIndex === ROMAN_MAP.I) {
+          seventhChordType = 'm7'; // e.g., Cm7
+        }
+        // III in minor can be maj7 (from natural/melodic)
+        else if (scaleDegreeIndex === ROMAN_MAP.III) {
+          // Check if natural minor chord is already maj7, e.g. Ebmaj7 in C minor
+          const naturalMinorChord = keyDetails.natural.chords[scaleDegreeIndex];
+          if (naturalMinorChord && Tonal.Chord.get(naturalMinorChord).type === 'major seventh') {
+            seventhChordType = 'maj7';
+          } else {
+             seventhChordType = 'm7'; // Default to m7 if III isn't naturally maj7
+          }
+        }
+        // iv in minor is typically a minor 7th.
+        else if (scaleDegreeIndex === ROMAN_MAP.IV) {
+          seventhChordType = 'm7'; // e.g., Fm7 in C minor
+        }
+        // VI in minor can be maj7 (from natural/melodic)
+        else if (scaleDegreeIndex === ROMAN_MAP.VI) {
+           // Check if natural minor chord is already maj7, e.g. Abmaj7 in C minor
+          const naturalMinorChord = keyDetails.natural.chords[scaleDegreeIndex];
+          if (naturalMinorChord && Tonal.Chord.get(naturalMinorChord).type === 'major seventh') {
+            seventhChordType = 'maj7';
+          } else {
+            seventhChordType = 'm7'; // Default to m7 if VI isn't naturally maj7
+          }
+        }
+      }
+      // Fallback if no specific type determined (should be rare)
+      if (!seventhChordType) {
+         // If the triad is major, default to dominant 7th. If minor/dim, default to minor 7th.
+        if (triadDetails.type === "major") seventhChordType = "7";
+        else if (triadDetails.type === "minor") seventhChordType = "m7";
+        else if (triadDetails.type === "diminished") seventhChordType = "m7b5"; // Or dim7 if context suggests
+        else seventhChordType = "7"; // Default fallback
+        console.warn(
+            `applyChordModifications: Could not determine specific 7th type for "${baseRomanInput}" on triad "${finalChordSymbol}" (key: ${keyDetails.tonic} ${keyType}, degree: ${scaleDegreeIndex}). Defaulting to inferred "${seventhChordType}".`,
+          );
+      }
+    }
+
+    // Construct and validate the 7th chord symbol
+    if (seventhChordType) { // Ensure seventhChordType was actually determined
+      const potentialSeventhSymbol = triadDetails.tonic + seventhChordType; // Use triadDetails.tonic
+      const seventhChordInfo = Tonal.Chord.get(potentialSeventhSymbol);
+
+      if (!seventhChordInfo.empty) {
+        finalChordSymbol = seventhChordInfo.symbol;
+      } else {
+        // This means the determined seventhChordType (e.g., "maj7", "m7b5") isn't valid for the tonic.
+        // This is more of a logic error in determining seventhChordType.
+        console.warn( // Keep as warn, as it might fallback to a simpler 7th or just the triad.
+          `applyChordModifications: Constructed invalid 7th chord symbol "${potentialSeventhSymbol}" for Roman "${baseRomanInput}". Attempting generic '7'.`,
+        );
+        // Try a generic dominant 7th as a last resort if adding a specific 7th failed
+        const genericSeventhSymbol = triadDetails.tonic + '7';
+        const genericSeventhInfo = Tonal.Chord.get(genericSeventhSymbol);
+        if (!genericSeventhInfo.empty) {
+          finalChordSymbol = genericSeventhInfo.symbol;
+           console.warn(
+            `applyChordModifications: Using generic dominant 7th "${finalChordSymbol}" as fallback for Roman "${baseRomanInput}".`
+           );
+        } else {
+          // If even generic '7' fails, it's very problematic. Stick to the triad.
+           console.warn(
+            `applyChordModifications: Could not form any valid 7th chord for Roman "${baseRomanInput}" on base "${triadDetails.symbol}". Using triad symbol.`
+           );
+           // finalChordSymbol remains the triad symbol
+        }
+      }
+    }
+  }
+  return finalChordSymbol;
+}
+
+/**
+ * Calculates MIDI notes, note names, and the required bass pitch class for a given chord symbol.
+ * @param finalChordSymbol - The fully resolved chord symbol (e.g., "Dm7", "G7", "Bbm7b5").
+ * @param bassInterval - Interval for the bass note (e.g., "1", "3", "b5", "7").
+ * @param keyType - 'major' or 'minor'.
+ * @param keyTonic - The tonic of the key (e.g., "C", "G", "F#"). Used for octave hint.
+ * @returns Object with notes, noteNames, and requiredBassPc, or null on failure.
+ */
+function getChordNotesAndBass(
+  finalChordSymbol: string,
+  bassInterval: string | null,
+  keyType: 'major' | 'minor',
+  keyTonic: string,
 ): {
   notes: number[];
   noteNames: string[];
   requiredBassPc: number | null;
 } | null {
-  try {
-    const parsed = parseRomanNumeral(fullRomanWithInversion);
-    if (!parsed) return null;
-    const { baseRoman, bassInterval } = parsed;
-
-    // Attempt to parse major key first, then minor
-    let keyDetails:
-      | ReturnType<typeof Tonal.Key.majorKey>
-      | ReturnType<typeof Tonal.Key.minorKey> = Tonal.Key.majorKey(keyName);
-    if (!keyDetails || keyDetails.type !== 'major') {
-      keyDetails = Tonal.Key.minorKey(keyName);
-    }
-
-    if (!keyDetails || !keyDetails.tonic) {
-      console.warn(
-        `Could not get valid key details for key "${keyName}". Roman: "${fullRomanWithInversion}"`,
-      );
-      return null;
-    }
-    const tonic = keyDetails.tonic;
-    const keyType = keyDetails.type as 'major' | 'minor';
-
-    const romanMap: Record<string, number> = {
-      I: 0,
-      II: 1,
-      III: 2,
-      IV: 3,
-      V: 4,
-      VI: 5,
-      VII: 6,
-    };
-    const baseRomanMatch = baseRoman.match(/([ivx]+)/i); // Allow V, X etc.
-    if (!baseRomanMatch) {
-      console.warn(
-        `Could not parse base Roman letters from "${baseRoman}" in full Roman "${fullRomanWithInversion}".`,
-      );
-      return null;
-    }
-    const baseRomanUpper = baseRomanMatch[1].toUpperCase();
-    const scaleDegreeIndex = romanMap[baseRomanUpper];
-
-    if (scaleDegreeIndex === undefined) {
-      console.warn(
-        `Could not map base Roman letters "${baseRomanUpper}" to scale degree index.`,
-      );
-      return null;
-    }
-
-    // --- Get Diatonic Chord Symbol ---
-    let finalChordSymbol = '';
-    try {
-      const diatonicChords =
-        keyType === 'major'
-          ? Tonal.Key.majorKey(keyName)?.chords // Use Tonal's list for major
-          : Tonal.Key.minorKey(keyName)?.natural.chords; // Start with natural minor
-
-      const diatonicHarmonicChords =
-        keyType === 'minor' ? Tonal.Key.minorKey(keyName)?.harmonic.chords : [];
-      // const diatonicMelodicChords = Tonal.Key.minorKey(keyName)?.melodic.chords; // Melodic less common for basic RN analysis
-
-      if (!diatonicChords || scaleDegreeIndex >= diatonicChords.length) {
-        console.warn(
-          `Scale degree index ${scaleDegreeIndex} out of bounds for key "${keyName}".`,
-        );
-        return null;
-      }
-
-      finalChordSymbol = diatonicChords[scaleDegreeIndex]; // Initial diatonic chord
-
-      // --- Adjust Quality for Minor Key (Harmonic/Melodic) & Explicit Markings ---
-      const qualityMatch = baseRoman.match(/(dim|o|\+|aug|M|m|maj|min)$/i);
-      const requestedQualitySymbol = qualityMatch
-        ? qualityMatch[1].toLowerCase()
-        : null;
-      const requestedSeventh = baseRoman.includes('7');
-      const requestedHalfDim =
-        baseRoman.includes('ø') || baseRoman.includes('hd'); // Check for half-dim symbol
-      const requestedDim =
-        baseRoman.includes('°') ||
-        baseRoman.includes('dim') ||
-        baseRoman.includes('o');
-
-      // Minor key adjustments (prioritize harmonic minor for V and vii)
-      if (keyType === 'minor') {
-        if (
-          scaleDegreeIndex === 4 /* V */ &&
-          diatonicHarmonicChords &&
-          diatonicHarmonicChords.length > scaleDegreeIndex
-        ) {
-          finalChordSymbol = diatonicHarmonicChords[scaleDegreeIndex]; // Usually V major
-        } else if (
-          scaleDegreeIndex === 6 /* VII */ &&
-          diatonicHarmonicChords &&
-          diatonicHarmonicChords.length > scaleDegreeIndex
-        ) {
-          finalChordSymbol = diatonicHarmonicChords[scaleDegreeIndex]; // Usually vii diminished
-        }
-        // Note: ii chord in minor is often m7b5 (half-diminished), handled later if 7th is added
-      }
-
-      // Apply explicit quality override if provided
-      let currentChordInfo = Tonal.Chord.get(finalChordSymbol);
-      if (requestedQualitySymbol && currentChordInfo.tonic) {
-        let qualityToApply = '';
-        if (['maj', 'M'].includes(requestedQualitySymbol)) qualityToApply = 'M';
-        else if (['min', 'm'].includes(requestedQualitySymbol))
-          qualityToApply = 'm';
-        else if (['dim', 'o'].includes(requestedQualitySymbol))
-          qualityToApply = 'dim'; // Triad
-        else if (['aug', '+'].includes(requestedQualitySymbol))
-          qualityToApply = 'aug';
-
-        if (qualityToApply) {
-          // Construct the new symbol ensuring tonic remains correct
-          const potentialNewSymbol = currentChordInfo.tonic + qualityToApply;
-          const checkChord = Tonal.Chord.get(potentialNewSymbol);
-          if (!checkChord.empty) {
-            finalChordSymbol = checkChord.symbol;
-            currentChordInfo = checkChord; // Update current chord info
-          }
-        }
-      }
-
-      // Add 7th if requested
-      if (requestedSeventh) {
-        currentChordInfo = Tonal.Chord.get(finalChordSymbol); // Re-get in case quality changed
-        let seventhSymbol = '';
-
-        // Determine 7th type based on context and common practice
-        if (requestedHalfDim) {
-          seventhSymbol = currentChordInfo.tonic + 'm7b5'; // Explicit half-dim
-        } else if (requestedDim) {
-          seventhSymbol = currentChordInfo.tonic + 'dim7'; // Explicit fully-dim
-        } else {
-          // Infer 7th type based on quality and scale degree
-          if (keyType === 'major') {
-            if (
-              scaleDegreeIndex === 0 /* I */ ||
-              scaleDegreeIndex === 3 /* IV */
-            )
-              seventhSymbol = currentChordInfo.tonic + 'maj7'; // Imaj7, IVmaj7
-            else if (
-              scaleDegreeIndex === 1 /* ii */ ||
-              scaleDegreeIndex === 2 /* iii */ ||
-              scaleDegreeIndex === 5 /* vi */
-            )
-              seventhSymbol = currentChordInfo.tonic + 'm7'; // iim7, iiim7, vim7
-            else if (scaleDegreeIndex === 4 /* V */)
-              seventhSymbol = currentChordInfo.tonic + '7'; // V7 (dominant)
-            else if (scaleDegreeIndex === 6 /* vii */)
-              seventhSymbol = currentChordInfo.tonic + 'm7b5'; // viiø7 (half-dim)
-          } else {
-            // Minor key context
-            if (scaleDegreeIndex === 4 /* V */)
-              seventhSymbol = currentChordInfo.tonic + '7'; // V7 (dominant, from harmonic minor)
-            else if (scaleDegreeIndex === 6 /* vii */)
-              seventhSymbol = currentChordInfo.tonic + 'dim7'; // vii°7 (fully-dim, from harmonic minor)
-            else if (scaleDegreeIndex === 1 /* ii */)
-              seventhSymbol = currentChordInfo.tonic + 'm7b5'; // iiø7 (half-dim, common)
-            else if (scaleDegreeIndex === 0 /* i */)
-              seventhSymbol = currentChordInfo.tonic + 'm7'; // im7
-            else if (
-              scaleDegreeIndex === 2 /* III */ &&
-              Tonal.Key.minorKey(keyName)?.natural.chords[2].endsWith('maj7')
-            )
-              seventhSymbol = currentChordInfo.tonic + 'maj7'; // IIImaj7 (if from natural minor/melodic) - less common RN default but possible
-            else if (scaleDegreeIndex === 3 /* iv */)
-              seventhSymbol = currentChordInfo.tonic + 'm7'; // ivm7
-            else if (
-              scaleDegreeIndex === 5 /* VI */ &&
-              Tonal.Key.minorKey(keyName)?.natural.chords[5].endsWith('maj7')
-            )
-              seventhSymbol = currentChordInfo.tonic + 'maj7'; // VImaj7 (if from natural minor/melodic) - less common RN default but possible
-            else {
-              // Default guess if specific cases don't match
-              if (currentChordInfo.type === 'major')
-                seventhSymbol = currentChordInfo.tonic + 'maj7';
-              else if (currentChordInfo.type === 'minor')
-                seventhSymbol = currentChordInfo.tonic + 'm7';
-              else seventhSymbol = finalChordSymbol + '7'; // Fallback dominant 7th
-            }
-          }
-        }
-
-        // Validate and apply the 7th symbol
-        const chordInfo = Tonal.Chord.get(seventhSymbol);
-        if (!chordInfo.empty) {
-          finalChordSymbol = seventhSymbol;
-        } else {
-          // Fallback: just append 7 if specific type failed
-          const fallbackSymbol = finalChordSymbol + '7';
-          const fallbackInfo = Tonal.Chord.get(fallbackSymbol);
-          if (!fallbackInfo.empty) {
-            finalChordSymbol = fallbackSymbol;
-          } else {
-            console.warn(
-              `Input "${fullRomanWithInversion}" requested 7th, but common 7th types failed for base "${finalChordSymbol}". Using base triad.`,
-            );
-          }
-        }
-      }
-
-      // --- Final Chord Processing ---
-      const finalChord = Tonal.Chord.get(finalChordSymbol);
-      if (
-        !finalChord ||
-        finalChord.empty ||
-        !finalChord.notes ||
-        finalChord.notes.length === 0 ||
-        !finalChord.tonic
-      ) {
-        console.warn(
-          `Could not get valid chord info for final symbol "${finalChordSymbol}" (derived from "${fullRomanWithInversion}" in "${keyName}").`,
-        );
-        return null;
-      }
-
-      // --- Get Root Position MIDI Notes and Note Names ---
-      const rootNoteDetails = Tonal.Note.get(finalChord.tonic);
-      // Smarter octave guess based on typical key ranges and root note
-      let rootOctaveGuess = 3; // Default C3-B3 range start
-      if (['F', 'G', 'A', 'B'].includes(rootNoteDetails.letter)) {
-        rootOctaveGuess = 2; // Start lower for F, G, A, B roots (F2-B2)
-      }
-      if (keyType === 'minor' && ['A', 'B'].includes(rootNoteDetails.letter)) {
-        rootOctaveGuess = 2; // Ensure Am, Bdim start low enough (A2, B2)
-      }
-      if (keyType === 'major' && ['D', 'E'].includes(rootNoteDetails.letter)) {
-        rootOctaveGuess = 3; // D major/E minor roots often start around D3/E3
-      }
-
-      let rootMidi = Tonal.Note.midi(finalChord.tonic + rootOctaveGuess);
-      // Adjust octave up if rootMidi is very low (e.g., below E2/MIDI 40)
-      if (rootMidi !== null && rootMidi < 40) {
-        const higherMidi = Tonal.Note.midi(
-          finalChord.tonic + (rootOctaveGuess + 1),
-        );
-        if (higherMidi) rootMidi = higherMidi;
-      }
-
-      if (rootMidi === null) {
-        console.warn(
-          `Could not determine root MIDI for chord "${finalChordSymbol}".`,
-        );
-        return null;
-      }
-      const rootNoteName = Tonal.Note.fromMidi(rootMidi);
-      if (!rootNoteName) {
-        console.warn(`Could not get note name from root MIDI ${rootMidi}.`);
-        return null;
-      }
-
-      // Calculate MIDI notes and Note Names simultaneously
-      const chordNotesMidi: number[] = [];
-      const noteNames: string[] = [];
-
-      finalChord.intervals.forEach((interval) => {
-        try {
-          const transposedNoteName = Tonal.transpose(rootNoteName, interval);
-          if (transposedNoteName) {
-            const midi = Tonal.Note.midi(transposedNoteName);
-            if (midi !== null) {
-              chordNotesMidi.push(midi);
-              noteNames.push(transposedNoteName); // Add the calculated note name
-            }
-          }
-        } catch (transposeError) {
-          console.error(
-            `Error transposing ${rootNoteName} by ${interval}:`,
-            transposeError,
-          );
-          // Skip this note if transposition fails
-        }
-      });
-
-      // Ensure notes are sorted (MIDI and names should correspond)
-      const sortedIndices = chordNotesMidi
-        .map((_, index) => index)
-        .sort((a, b) => chordNotesMidi[a] - chordNotesMidi[b]);
-
-      const sortedMidiNotes = sortedIndices.map((i) => chordNotesMidi[i]);
-      const sortedNoteNames = sortedIndices.map((i) => noteNames[i]);
-
-      // --- Determine Required Bass Pitch Class ---
-      let requiredBassPc: number | null = null;
-      if (bassInterval && bassInterval !== '1P') {
-        // Tonal uses P for perfect unison
-        // Transpose the ROOT of the chord by the bassInterval to find the bass note
-        try {
-          // Use the determined root note name (with octave) for accurate transposition context
-          const bassNoteName = Tonal.transpose(
-            rootNoteName, // Use the root note with octave (e.g., "C4")
-            bassInterval,
-          );
-          if (bassNoteName) {
-            const bassMidi = Tonal.Note.midi(bassNoteName);
-            if (bassMidi !== null) {
-              requiredBassPc = Tonal.Note.chroma(bassNoteName); // Use chroma directly
-            } else {
-              console.warn(
-                `Could not get MIDI for calculated bass note ${bassNoteName} (root: ${rootNoteName}, interval: ${bassInterval}).`,
-              );
-            }
-          } else {
-            console.warn(
-              `Could not transpose root ${rootNoteName} by interval ${bassInterval}.`,
-            );
-          }
-        } catch (e) {
-          console.error(
-            `Error transposing for bass note: Root=${rootNoteName}, Interval=${bassInterval}`,
-            e,
-          );
-        }
-      }
-
-      // Sanity check: ensure the required bass PC is actually in the chord notes
-      if (
-        requiredBassPc !== null &&
-        !finalChord.chroma.includes(requiredBassPc.toString()) // Check against chord's chroma
-      ) {
-        console.warn(
-          `Calculated bass PC ${requiredBassPc} for inversion "${bassInterval}" is not in the base chord chromas for "${finalChordSymbol}" (${finalChord.chroma}). Resetting requiredBassPc to null.`,
-        );
-        requiredBassPc = null; // Revert if calculated bass note isn't part of the chord's pitch classes
-      }
-
-      return {
-        notes: sortedMidiNotes,
-        noteNames: sortedNoteNames,
-        requiredBassPc,
-      };
-    } catch (innerError) {
-      console.error(
-        `Error processing chord data for Roman "${fullRomanWithInversion}" in key "${keyName}" (Final Symbol: ${finalChordSymbol}):`,
-        innerError,
-      );
-      return null;
-    }
-  } catch (error) {
-    console.error(
-      `Unexpected error getting chord info for Roman "${fullRomanWithInversion}" in key "${keyName}":`,
-      error,
+  const finalChord = Tonal.Chord.get(finalChordSymbol);
+  if (finalChord.empty || !finalChord.notes || finalChord.notes.length === 0 || !finalChord.tonic) {
+    // This means that after all modifications, the resulting chord symbol is invalid.
+    throw new MusicTheoryError(
+      `getChordNotesAndBass: The fully modified chord symbol "${finalChordSymbol}" is invalid or has no notes.`,
     );
-    return null;
   }
+
+  // Determine a sensible root octave for the chord voicing.
+  const chordTonicNote = Tonal.Note.get(finalChord.tonic);
+  let rootOctaveGuess = 3; // Default: C3-B3 range for chord root
+  if (['F', 'G', 'A', 'B'].includes(chordTonicNote.letter)) {
+    rootOctaveGuess = 2; // F2-B2 for these roots to keep them lower
+  }
+  // Minor key tonics like A, B often sound better starting lower.
+  if (keyType === 'minor' && (keyTonic === 'A' || keyTonic === 'Am' || keyTonic === 'B' || keyTonic === 'Bm')) {
+      if (finalChord.tonic.startsWith('A') || finalChord.tonic.startsWith('B')) {
+        rootOctaveGuess = 2;
+      }
+  }
+  // For keys like D, E, ensure chords don't start too high if root is D, E.
+  if ((keyTonic === 'D' || keyTonic === 'Dm' || keyTonic === 'E' || keyTonic === 'Em') &&
+      (finalChord.tonic.startsWith('D') || finalChord.tonic.startsWith('E'))) {
+        // Keep default of 3, but this logic can be expanded.
+  }
+
+
+  let rootMidi = Tonal.Note.midi(finalChord.tonic + rootOctaveGuess);
+  if (rootMidi !== null && rootMidi < 36) { // MIDI 36 is C2
+    const higherMidi = Tonal.Note.midi(finalChord.tonic + (rootOctaveGuess + 1));
+    if (higherMidi) rootMidi = higherMidi;
+  }
+   if (rootMidi !== null && rootMidi > 72) { // MIDI 72 is C5
+    const lowerMidi = Tonal.Note.midi(finalChord.tonic + (rootOctaveGuess -1));
+    if (lowerMidi && lowerMidi >=36) rootMidi = lowerMidi; // don't go too low
+  }
+
+
+  if (rootMidi === null) {
+    // This implies Tonal.Note.midi failed for a note like "C" + octave. Highly unlikely with valid tonic.
+    throw new MusicTheoryError(
+      `getChordNotesAndBass: Could not determine root MIDI for chord "${finalChordSymbol}" with tonic "${finalChord.tonic}" and octave guess ${rootOctaveGuess}.`,
+    );
+  }
+  const rootNoteNameWithOctave = Tonal.Note.fromMidi(rootMidi);
+  if (!rootNoteNameWithOctave) { // Should also be highly unlikely if rootMidi is valid
+    throw new MusicTheoryError(
+      `getChordNotesAndBass: Could not get note name from root MIDI ${rootMidi} for chord "${finalChordSymbol}".`,
+    );
+  }
+
+  const chordNotesMidi: number[] = [];
+  const noteNames: string[] = [];
+
+  finalChord.intervals.forEach((interval) => {
+    try {
+      const transposedNoteName = Tonal.transpose(rootNoteNameWithOctave, interval);
+      const midi = Tonal.Note.midi(transposedNoteName);
+      if (midi !== null) {
+        chordNotesMidi.push(midi);
+        noteNames.push(transposedNoteName);
+      } else {
+         // This warning is kept as it indicates a potential issue with a specific interval transposition
+         // but doesn't necessarily invalidate the entire chord.
+         console.warn(`getChordNotesAndBass: Could not get MIDI for transposed note "${transposedNoteName}" (root: "${rootNoteNameWithOctave}", interval: "${interval}") for chord ${finalChordSymbol}`);
+      }
+    } catch (transposeError: unknown) { // Catch unknown for better type safety
+      // This error might occur if Tonal.transpose fails with an unusual interval string.
+      console.error(
+        `getChordNotesAndBass: Error transposing root "${rootNoteNameWithOctave}" by interval "${interval}" for chord "${finalChordSymbol}": ${(transposeError as Error).message}`,
+      );
+      // Depending on strictness, one might choose to throw here or continue with fewer notes.
+      // For now, we continue, and the length check below will handle if no notes are generated.
+    }
+  });
+
+  if (chordNotesMidi.length === 0) {
+    // This means all interval transpositions failed or the chord had no intervals.
+    throw new MusicTheoryError(
+      `getChordNotesAndBass: No valid MIDI notes could be generated for chord symbol "${finalChordSymbol}" from its intervals.`,
+    );
+  }
+
+  // Sort notes by MIDI pitch
+  const sortedIndices = Array.from(chordNotesMidi.keys()).sort(
+    (a, b) => chordNotesMidi[a] - chordNotesMidi[b],
+  );
+  const sortedMidiNotes = sortedIndices.map((i) => chordNotesMidi[i]);
+  const sortedNoteNames = sortedIndices.map((i) => noteNames[i]);
+
+  // Determine required bass pitch class for inversions
+  let requiredBassPc: number | null = null;
+  if (bassInterval && bassInterval !== '1' && bassInterval !== '1P' && bassInterval !== 'P1') {
+    try {
+      // Transpose the CHORD's TONIC (without octave initially, Tonal.transpose handles it)
+      // by the bassInterval to find the correct bass note.
+      // Using rootNoteNameWithOctave as the base for transposition ensures the bass note
+      // is in a sensible octave relative to the chord.
+      const bassNoteName = Tonal.transpose(rootNoteNameWithOctave, bassInterval);
+      const bassNoteDetails = Tonal.Note.get(bassNoteName);
+
+      if (bassNoteDetails && typeof bassNoteDetails.chroma === 'number') {
+        requiredBassPc = bassNoteDetails.chroma;
+
+        // Sanity check: ensure the required bass PC is actually part of the chord's chroma.
+        // Tonal.Chord.get(finalChordSymbol).chroma returns string array, convert requiredBassPc.
+        if (!finalChord.chroma.includes(requiredBassPc.toString())) {
+          // This warning is important as it indicates a potential music theory violation or an unusual inversion.
+          // The function will still return the requiredBassPc, but the caller should be aware.
+          console.warn(
+            `getChordNotesAndBass: Calculated bass PC ${requiredBassPc} ("${bassNoteName}") for inversion interval "${bassInterval}" on chord "${finalChordSymbol}" (chroma: ${finalChord.chroma}) is not one of the chord's primary pitch classes. This might indicate an unusual inversion (e.g., V/b3 where b3 is not in V) or a parsing issue. The bass note might be a non-chord tone.`,
+          );
+        }
+      } else {
+        // This means Tonal.transpose might have returned a note Tonal.Note.get can't process, or bassInterval was problematic.
+        console.warn( // Keep as warn, requiredBassPc will remain null.
+          `getChordNotesAndBass: Could not determine chroma for calculated bass note "${bassNoteName}" (chord: "${finalChordSymbol}", root: "${rootNoteNameWithOctave}", bass interval: "${bassInterval}").`,
+        );
+      }
+    } catch (e: unknown) { // Catch unknown for better type safety
+      // This error can occur if Tonal.transpose fails with the bassInterval.
+      console.error( // Log as error as it's an unexpected failure in a core utility.
+        `getChordNotesAndBass: Error transposing for bass note. Chord: "${finalChordSymbol}", Root: "${rootNoteNameWithOctave}", Bass Interval: "${bassInterval}". Error: ${(e as Error).message}`,
+      );
+      // requiredBassPc remains null, implying root position or failure to determine inversion.
+    }
+  }
+
+  return {
+    notes: sortedMidiNotes,
+    noteNames: sortedNoteNames,
+    requiredBassPc,
+  };
 }
 
-/** Creates an extended pool of MIDI notes for a chord across multiple octaves. (Unchanged) */
+/**
+ * Main exported function. Gets MIDI notes, note names, and required bass note
+ * pitch class based on a chord's Roman numeral in a given key.
+ * Handles inversions indicated by figured bass or slash notation.
+ *
+ * @param fullRomanWithInversion - Roman numeral symbol (e.g., "V7", "ii6", "IV64", "V/3").
+ * @param keyNameInput - Key signature (e.g., "C", "Gm", "F#maj").
+ * @returns Object with notes, noteNames, requiredBassPc, or null on failure.
+ */
+export function getChordInfoFromRoman(
+  fullRomanWithInversion: string,
+  keyNameInput: string,
+): {
+  notes: number[];
+  noteNames: string[];
+  requiredBassPc: number | null;
+} | null {
+  // No try-catch here; helper functions are expected to throw specific errors if they fail critically.
+  // The main error to catch here would be if a helper returned null unexpectedly when it should have thrown.
+
+  // 1. Parse Roman Numeral (handles inversions)
+  // parseRomanNumeral will throw MusicTheoryError if parsing fails.
+  const parsedRoman = parseRomanNumeral(fullRomanWithInversion);
+  // If parseRomanNumeral were to return null (legacy or future change), handle it:
+  // if (!parsedRoman) {
+  //   throw new MusicTheoryError(`Failed to parse Roman numeral "${fullRomanWithInversion}".`);
+  // }
+  const { baseRoman, bassInterval } = parsedRoman;
+
+  // 2. Get Key Details
+  // getKeyDetails will throw InvalidInputError if key is not recognized.
+  const keyDetails = getKeyDetails(keyNameInput);
+  // if (!keyDetails) { // Should be handled by getKeyDetails throwing an error
+  //    throw new InvalidInputError(`Failed to get key details for "${keyNameInput}" with Roman "${fullRomanWithInversion}".`);
+  // }
+  const keyType = keyDetails.type as 'major' | 'minor'; // Safe if getKeyDetails throws on null
+  const keyTonic = keyDetails.tonic; // Safe
+
+  // 3. Determine Scale Degree Index
+  const baseRomanMatch = baseRoman.match(/([ivxlcIVXLC]+)/i);
+  if (!baseRomanMatch) {
+    throw new MusicTheoryError(
+      `getChordInfoFromRoman: Could not extract Roman letters from base "${baseRoman}" (full: "${fullRomanWithInversion}"). Invalid Roman numeral structure.`,
+    );
+  }
+  const baseRomanUpper = baseRomanMatch[1].toUpperCase();
+  const scaleDegreeIndex = ROMAN_MAP[baseRomanUpper];
+
+  if (scaleDegreeIndex === undefined) {
+    throw new MusicTheoryError(
+      `getChordInfoFromRoman: Could not map base Roman numeral "${baseRomanUpper}" to a scale degree index. Full input: "${fullRomanWithInversion}".`,
+    );
+  }
+
+  // 4. Get Initial Diatonic Chord Symbol
+  // getInitialDiatonicChordSymbol will throw MusicTheoryError if index is out of bounds.
+  let currentChordSymbol = getInitialDiatonicChordSymbol(
+    baseRomanUpper,
+    scaleDegreeIndex,
+    keyDetails, // keyDetails is non-nullable here due to earlier check/throw
+    keyNameInput,
+  );
+  // if (!currentChordSymbol) { // Should be handled by getInitialDiatonicChordSymbol throwing
+  //   throw new MusicTheoryError(`Failed to get initial diatonic chord for "${baseRomanUpper}" in key "${keyNameInput}".`);
+  // }
+
+  // 5. Apply Explicit Chord Modifications (Quality, 7ths)
+  // applyChordModifications can throw MusicTheoryError if initial symbol is bad.
+  // It logs warnings for non-critical modification issues but proceeds.
+  currentChordSymbol = applyChordModifications(
+    currentChordSymbol, // currentChordSymbol is non-nullable here
+    baseRoman,
+    keyDetails,
+    scaleDegreeIndex,
+  );
+
+  // 6. Get Chord Notes and Bass Note Information
+  // getChordNotesAndBass will throw MusicTheoryError if the final symbol is invalid or notes can't be generated.
+  const chordNotesAndBass = getChordNotesAndBass(
+    currentChordSymbol,
+    bassInterval,
+    keyType,
+    keyTonic,
+  );
+  // if (!chordNotesAndBass) { // Should be handled by getChordNotesAndBass throwing
+  //   throw new MusicTheoryError(`Failed to get notes and bass for symbol "${currentChordSymbol}" (Roman: "${fullRomanWithInversion}", Key: "${keyNameInput}").`);
+  // }
+
+  return chordNotesAndBass;
+  // No top-level try-catch here means errors from helpers will propagate.
+  // If a very generic catch is desired at this level, it could be added,
+  // but it's often better to let specific errors propagate to the caller.
+}
+
+/** Creates an extended pool of MIDI notes for a chord across multiple octaves. */
 export function getExtendedChordNotePool(baseChordNotes: number[]): number[] {
   const pool: Set<number> = new Set();
   if (!baseChordNotes || baseChordNotes.length === 0) return [];
 
   [-2, -1, 0, 1, 2, 3, 4].forEach((octaveOffset) => {
     baseChordNotes.forEach((midi) => {
-      if (midi !== null) {
+      if (midi !== null) { // Should always be non-null if baseChordNotes is number[]
         const note = midi + octaveOffset * 12;
-        if (note >= 21 && note <= 108) {
-          // Filter within reasonable piano range
+        if (note >= 21 && note <= 108) { // MIDI A0 to C8 (standard piano range)
           pool.add(note);
         }
       }
@@ -462,14 +616,21 @@ export function getExtendedChordNotePool(baseChordNotes: number[]): number[] {
   return Array.from(pool).sort((a, b) => a - b);
 }
 
-/** Converts a MIDI number to its note name (e.g., 60 -> "C4"). (Unchanged) */
+/** Converts a MIDI number to its note name (e.g., 60 -> "C4"). */
 export function midiToNoteName(midi: number | null): string | null {
-  if (midi === null || !Number.isInteger(midi) || midi < 0 || midi > 127)
+  if (midi === null || !Number.isInteger(midi) || midi < 0 || midi > 127) {
+    // This is a utility function; throwing might be too aggressive if called in contexts
+    // where a null return is handled. For now, keep as console.warn and return null.
+    // If strictness is needed, an InvalidInputError could be thrown.
+    // console.warn(`midiToNoteName: Invalid MIDI number: ${midi}.`);
     return null;
+  }
   try {
     return Tonal.Note.fromMidi(midi);
-  } catch {
-    console.warn(`Could not convert MIDI ${midi} to note name.`);
-    return null;
+  } catch (e: unknown) { // Catch unknown for better type safety
+    // This error is rare if the input number is within 0-127.
+    // It might occur if Tonal.js has an internal issue or a very unexpected MIDI value bypasses checks.
+    console.warn(`midiToNoteName: Error converting MIDI ${midi} to note name: ${(e as Error).message}`);
+    return null; // Return null to indicate failure, allowing caller to handle.
   }
 }

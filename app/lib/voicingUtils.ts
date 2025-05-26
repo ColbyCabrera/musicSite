@@ -1,27 +1,40 @@
 // src/voicingUtils.ts
 import * as Tonal from 'tonal';
 import { VOICE_RANGES } from './constants';
-import { midiToNoteName } from './harmonyUtils'; // Import if needed for logging
+import { midiToNoteName } from './harmonyUtils'; // Used for logging, can be removed if logs are stripped
+import { MelodicState, GenerationStyle } from './types';
 
 /**
- * Selects the "best" MIDI note from allowed notes based on target, previous note, and smoothness.
- * Prioritizes stepwise motion if available and smoothness is high. Penalizes repetition.
- * @param targetMidi - The ideal target MIDI note (e.g., based on range center).
- * @param allowedNotes - Array of valid MIDI notes (in range, in chord). MUST be sorted ascending.
- * @param previousNoteMidi - MIDI note of this voice in the previous chord/beat.
- * @param smoothnessPref - Preference for stepwise motion (0-10, higher means more preference).
- * @param avoidLeapThreshold - Interval size (semitones) considered a leap to be penalized. Defaults to Perfect 5th (7).
- * @returns {number | null} The chosen MIDI note, or null if no suitable note.
+ * Selects the "best" MIDI note from a list of allowed notes based on several criteria:
+ * proximity to a `targetMidi`, voice leading smoothness from a `previousNoteMidi`,
+ * preference for stepwise motion (controlled by `smoothnessPref`), and penalization
+ * of large leaps or excessive repetition.
+ *
+ * The scoring logic is heuristic and aims to produce musically sensible choices.
+ *
+ * @param {number} targetMidi - The ideal target MIDI note, often derived from the center of a voice's range
+ *                              or a point of melodic attraction.
+ * @param {number[]} allowedNotes - An array of valid MIDI note numbers that the voice is allowed to move to.
+ *                                  This array **must be sorted in ascending order** for some internal logic.
+ * @param {number | null} previousNoteMidi - The MIDI note of this voice from the previous musical event.
+ *                                           If `null` (e.g., at the beginning of a piece), some voice leading
+ *                                           heuristics are adjusted.
+ * @param {number} smoothnessPref - A preference value (0-10) for stepwise motion. Higher values
+ *                                  more strongly penalize leaps and favor smaller intervals.
+ * @param {number} [avoidLeapThreshold=Tonal.Interval.semitones('P5') ?? 7] - The interval size in semitones
+ *                                  that is considered a "leap" and will be penalized more heavily.
+ *                                  Defaults to a perfect fifth (7 semitones).
+ * @returns {number | null} The chosen MIDI note number from `allowedNotes`, or `null` if `allowedNotes` is empty.
  */
 export function findClosestNote(
   targetMidi: number,
-  allowedNotes: number[], // Assumed sorted ascending
+  allowedNotes: number[],
   previousNoteMidi: number | null,
   smoothnessPref: number,
   avoidLeapThreshold: number = Tonal.Interval.semitones('P5') ?? 7,
 ): number | null {
   if (!allowedNotes || allowedNotes.length === 0) {
-    return null;
+    return null; // No notes to choose from.
   }
   if (allowedNotes.length === 1) {
     return allowedNotes[0];
@@ -110,23 +123,41 @@ export function findClosestNote(
 }
 
 /**
- * Selects a melody or soprano note from the available notes.
- * For SATB style, only chord tones are used.
- * For Melody+Accompaniment style, diatonic passing tones are preferred, with rare chromatic tones.
+ * Assigns a MIDI note for the Soprano voice (in SATB style) or the main Melody line
+ * (in MelodyAccompaniment style).
+ *
+ * For SATB style, it selects a chord tone from `fullChordNotePool` within the Soprano's range,
+ * aiming for smoothness from the `previousNote`.
+ *
+ * For MelodyAccompaniment style, it employs a more complex selection strategy:
+ * - It considers chord tones from `fullChordNotePool`.
+ * - It also considers diatonic notes (passing tones) from the current `keySignature`.
+ * - It uses `melodicState` (last direction and streak) to guide melodic contour,
+ *   preferring continued motion or controlled changes in direction.
+ * - It weights choices to favor chord tones and diatonic steps, with a small chance for chromaticism.
+ * - Aims to avoid oscillation by penalizing direct repetition if a streak continues.
+ *
+ * @param {number[]} fullChordNotePool - An array of all available MIDI notes for the current chord across multiple octaves.
+ * @param {number | null} previousNote - The MIDI note of this voice/part from the previous musical event.
+ * @param {number} smoothness - A preference (0-10) for smooth voice leading.
+ * @param {GenerationStyle} style - The musical style ('SATB' or 'MelodyAccompaniment') which dictates
+ *                                  the selection strategy and voice range.
+ * @param {string} [keySignature='C'] - The current key signature (e.g., "C", "Gm"). Used primarily for
+ *                                      MelodyAccompaniment style to determine diatonic notes.
+ * @param {MelodicState} [melodicState] - Optional. The current melodic state (last direction and streak),
+ *                                        used to guide melody generation in MelodyAccompaniment style.
+ * @returns {number | null} The chosen MIDI note number, or `null` if no suitable note can be found.
  */
 export function assignSopranoOrMelodyNote(
   fullChordNotePool: number[],
   previousNote: number | null,
   smoothness: number,
-  style: 'SATB' | 'MelodyAccompaniment',
+  style: GenerationStyle,
   keySignature: string = 'C',
-  melodicState?: {
-    lastDirection: number; // -1: down, 0: repeat, 1: up
-    directionStreak: number;
-  },
+  melodicState?: MelodicState,
 ): number | null {
   if (style === 'SATB') {
-    const [minRange, maxRange] = VOICE_RANGES.soprano;
+    const [minRange, maxRange] = VOICE_RANGES.soprano; // Use soprano range for SATB
     const availableNotes = fullChordNotePool
       .filter((n) => n >= minRange && n <= maxRange)
       .sort((a, b) => a - b);
