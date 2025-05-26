@@ -133,7 +133,6 @@ export function assignInnerVoicesSATB(
   keyDetails: Tonal.Key.Key, // Used for identifying leading tone etc.
 ): { tenorNoteMidi: number | null; altoNoteMidi: number | null } {
   if (sopranoNoteMidi === null || bassNoteMidi === null) {
-    // console.warn('SATB: Cannot assign inner voices without valid soprano and bass notes.');
     return { tenorNoteMidi: null, altoNoteMidi: null };
   }
 
