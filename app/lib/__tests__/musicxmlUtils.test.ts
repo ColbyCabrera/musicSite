@@ -83,10 +83,10 @@ describe('midiToMusicXMLPitch specific Tonal.js naming', () => {
     expect(midiToMusicXMLPitch(50)).toEqual({ step: 'D', alter: 1, octave: 3 });
   });
 
-  // Tonal.Note.fromMidi(51) -> "E3" (no, this is D#3. 52 is E3)
-  // Tonal.Note.fromMidi(52) -> "E3"
-  // Tonal.Note.fromMidi(53) -> "F3" (no, this is F#3. 53 is F#3)
-  // Tonal.Note.fromMidi(53) is F#3
+  // Tonal.Note.fromMidi(51) -> "D#3" (correct behavior: D#3, not E3)
+  // Tonal.Note.fromMidi(52) -> "E3" (correct behavior: E3)
+  // Tonal.Note.fromMidi(53) -> "F#3" (correct behavior: F#3)
+  // Tonal.Note.fromMidi(53) is F#3 (consistent with F#3)
    test('should correctly identify F#3 from MIDI 53', () => {
     expect(midiToMusicXMLPitch(53)).toEqual({ step: 'F', alter: 1, octave: 3 });
   });
