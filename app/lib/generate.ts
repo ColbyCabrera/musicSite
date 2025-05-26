@@ -115,9 +115,9 @@ function initializeGenerationParameters(
   const meterBeats = parseInt(beatsStr, 10);
   const beatValue = parseInt(beatValueStr, 10);
 
-  if (isNaN(meterBeats) || isNaN(beatValue) || meterBeats <= 0) { // Added isNaN checks
+  if (isNaN(meterBeats) || !Number.isSafeInteger(meterBeats) || isNaN(beatValue) || meterBeats <= 0) {
     throw new InvalidInputError(
-      `Invalid meter beats or beat value: ${beatsStr}/${beatValueStr}. Both must be positive numbers.`,
+      `Invalid meter beats or beat value: ${beatsStr}/${beatValueStr}. Beats must be a positive safe integer.`,
     );
   }
   if (![1, 2, 4, 8, 16, 32].includes(beatValue)) {

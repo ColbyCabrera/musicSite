@@ -244,28 +244,6 @@ function generateMelody(
 
 
       // console.log(possibleNotes); // Debugging
-        {
-          // Ensure item is always string[], provide default if chordInfo or noteNames is null/undefined
-          item: chordInfo?.noteNames?.map(
-            (noteName) =>
-              putInRange(
-                Note.get(noteName).letter + lastNote.oct, // lastNote should be valid here
-                minRange,
-                maxRange,
-              ),
-          ) ?? [], // Default to empty array if undefined
-          weight: 2,
-        },
-        {
-          item: diatonicNotes.map((noteName) =>
-            // Ensure noteName is valid, fallback to tonic if somehow null (though map should skip nulls if any)
-            putInRange(noteName ?? (keyObj.scale[0] + '4'), minRange, maxRange),
-          ),
-          weight: 1,
-        },
-      ]); // Removed 'as string[]' assertion
-
-      // console.log(possibleNotes); // Log for debugging
 
       // Handle the case where possibleNotes might be null or empty
       let nextMelodyNote: string;
