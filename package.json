@@ -82,6 +82,8 @@
     "zod": "^3.23.4"
   },
   "devDependencies": {
+    "@next/swc-linux-x64-gnu": "^15.1.8",
+    "@swc/core": "^1.11.29",
     "@tailwindcss/container-queries": "^0.1.1",
     "@types/bcrypt": "^5.0.1",
     "@types/bcryptjs": "^2.4.6",
