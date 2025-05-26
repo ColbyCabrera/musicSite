@@ -130,14 +130,16 @@ Return ONLY the JSON array of accompaniment note objects. Do not include any exp
   // console.log(geminiResponseText); // Log for debugging API response
 
     try {
+      // Ensure responseText is a string before trying to match or parse
+      const responseText = typeof geminiResponseText === 'string' ? geminiResponseText : '';
       // Attempt to parse the response, assuming it might be wrapped in markdown (```json ... ```)
-      const jsonMatch = geminiResponseText.match(/```json\s*([\s\S]*?)\s*```/);
-      const jsonToParse = jsonMatch ? jsonMatch[1] : geminiResponseText;
+      const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/);
+      const jsonToParse = jsonMatch ? jsonMatch[1] : responseText;
       const parsedAccompaniment = JSON.parse(jsonToParse) as Melody;
       accompaniment = parsedAccompaniment; // Assign parsed accompaniment
     } catch (parseError: unknown) {
-      console.error('Failed to parse Gemini API response as JSON:', geminiResponseText, parseError);
-      throw new GenerationError(`Failed to parse accompaniment from API response. Raw response: "${geminiResponseText}"`);
+      console.error('Failed to parse Gemini API response as JSON:', responseText, parseError);
+      throw new GenerationError(`Failed to parse accompaniment from API response. Raw response: "${responseText}"`);
     }
   } else {
     accompaniment = []; // Set to empty array if AI accompaniment is disabled

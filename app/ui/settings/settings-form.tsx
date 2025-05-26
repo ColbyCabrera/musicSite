@@ -107,6 +107,9 @@ export default function SettingsForm({
       if (currentUser.role === 'ADMIN' && selectedUser && data.role) {
         await updateUserRole(selectedUser.id, data.role as UserRole);
       }
+
+      // Update AI accompaniment setting
+      await updateUserAiAccompaniment(targetUser.id, data.enableAiAccompaniment ?? false);
     } catch (error) {
       console.error('Failed to save settings:', error);
     } finally {
