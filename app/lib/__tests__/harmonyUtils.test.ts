@@ -94,10 +94,10 @@ describe('parseRomanNumeral', () => {
   });
 
   test('should handle slashes at the beginning or end, or invalid figures', () => {
-    expect(() => parseRomanNumeral('/V')).toThrow(); // Or specific error if handled
-    expect(() => parseRomanNumeral('V/')).toThrow(); // Or specific error
-    expect(() => parseRomanNumeral('I/8')).toThrow(); // Invalid interval
-    expect(() => parseRomanNumeral('I67')).toThrow(); // Invalid figure
+    expect(() => parseRomanNumeral('/V')).toThrow(new MusicTheoryError('parseRomanNumeral: Could not parse base Roman numeral from "/V". Check format.'));
+    expect(() => parseRomanNumeral('V/')).toThrow(new MusicTheoryError('parseRomanNumeral: Could not parse base Roman numeral from "V/". Check format.'));
+    expect(() => parseRomanNumeral('I/8')).toThrow(new MusicTheoryError('parseRomanNumeral: Could not parse base Roman numeral from "I/8". Check format.'));
+    expect(() => parseRomanNumeral('I67')).toThrow(new MusicTheoryError('parseRomanNumeral: Could not parse base Roman numeral from "I67". Check format.'));
   });
 
   test('should correctly parse complex qualities with inversions', () => {
@@ -756,10 +756,6 @@ describe('getExtendedChordNotePool', () => {
 
     expect(pool.length).toBeGreaterThan(baseCMajor.length);
 
-    // Check if sorted
-    for (let i = 0; i < pool.length - 1; i++) {
-      expect(pool[i]).toBeLessThanOrEqual(pool[i+1]); // Use LessThanOrEqual for duplicate PCs in different octaves
-    }
     // More robust sort check: ensure no element is smaller than the one before it.
     if (pool.length > 1) {
         for (let i = 1; i < pool.length; i++) {
