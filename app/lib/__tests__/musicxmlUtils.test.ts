@@ -46,7 +46,6 @@ describe('midiToMusicXMLPitch', () => {
     expect(midiToMusicXMLPitch(62)).toEqual({ step: 'D', alter: undefined, octave: 4 }); // D4, from C##4's MIDI value
 
     // Tonal.Note.get("Ebb4").midi is 62. Tonal.Note.fromMidi(62) is "D4".
-    expect(midiToMusicXMLPitch(62)).toEqual({ step: 'D', alter: undefined, octave: 4 }); // D4, from Ebb4's MIDI value
 
     // Tonal.Note.get("G##4").midi is 69. Tonal.Note.fromMidi(69) is "A4".
     expect(midiToMusicXMLPitch(69)).toEqual({ step: 'A', alter: undefined, octave: 4 }); // A4, from G##4's MIDI value
