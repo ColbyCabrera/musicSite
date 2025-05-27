@@ -146,7 +146,7 @@ describe('generateChordProgression', () => {
          if (progMinor.some(c => c.endsWith('7') && c !== 'V7')) hasMoreSeventhsMinor = true;
       }
       expect(hasDiminishedMinor).toBe(true);
-      expect(retryCondition(() => hasMoreSeventhsMinor, 10)).toBe(true); // Probabilistic check
+      expect(hasMoreSeventhsMinor).toBe(true); // Probabilistic check - assert based on prior loop
 
       // Also check for increased unique chord count generally
       const uniqueChordsLow = new Set(generateChordProgression(keyMajor, measures, 1));

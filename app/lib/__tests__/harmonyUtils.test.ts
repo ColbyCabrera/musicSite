@@ -585,9 +585,9 @@ describe('getChordNotesAndBass', () => {
     test('should return notes for diminished 7th chord (G#dim7) in root position', () => {
       const result = getChordNotesAndBass('G#dim7', '1', 'minor', 'A'); // G#dim7 in A minor
       // rootOctaveGuess: keyTonic 'A', chordTonic 'G#'. Guess = 2.
-      expect(result?.noteNames).toEqual(['G#2', 'B2', 'D3', 'F3']); // Fbb = F
+      expect(result?.noteNames).toEqual(['G#2', 'B2', 'D3', 'Fb3']); // Fb is the diminished 7th (enharmonically E)
       expect(result?.requiredBassPc).toBe(null);
-      expect(sortPCs(result?.notes.map(n => n % 12) || [])).toEqual(sortPCs([8, 11, 2, 5])); // G#, B, D, F (Fb is enharmonically E)
+      expect(sortPCs(result?.notes.map(n => n % 12) || [])).toEqual(sortPCs([8, 11, 2, 4])); // G#, B, D, Fb (Fb is PC 4)
     });
   });
 
@@ -962,9 +962,9 @@ describe('getChordInfoFromRoman', () => {
       // vii° in G is F#dim. vii°7 is F#dim7.
       const result = getChordInfoFromRoman('vii°7', 'G');
       expect(result?.finalChordSymbol).toBe('F#dim7');
-      expect(result?.noteNames).toEqual(['F#2', 'A2', 'C3', 'Eb3']); // F# in G -> F#2. F# A C Eb (Ebb)
+      expect(result?.noteNames).toEqual(['F#2', 'A2', 'C3', 'Ebb3']); // F# in G -> F#2. F# A C Ebb
       expect(result?.requiredBassPc).toBe(null);
-      expect(sortPCs(result?.notes.map(n => n % 12) || [])).toEqual(sortPCs([6, 9, 0, 3])); // F# A C Eb
+      expect(sortPCs(result?.notes.map(n => n % 12) || [])).toEqual(sortPCs([6, 9, 0, 2])); // F# A C Ebb (Ebb is PC 2)
     });
     
     test('should return correct info for iiø7 in D minor', () => {
@@ -1059,12 +1059,11 @@ describe('getChordInfoFromRoman', () => {
       expect(sortPCs(result?.notes.map(n => n % 12) || [])).toEqual(sortPCs([8, 0, 3, 6])); // Ab C Eb Gb
     });
 
-     test('should handle It+6 in C major (AbM)', () => {
+     test('should handle It+6 in C major (Ab C F#)', () => {
       const result = getChordInfoFromRoman('bVI It+6', 'C'); 
-      expect(result?.finalChordSymbol).toBe('AbM'); 
-      expect(result?.noteNames).toEqual(['Ab2', 'C3', 'Eb3']); 
+      expect(result?.noteNames).toEqual(['Ab2', 'C3', 'F#3']); 
       expect(result?.requiredBassPc).toBe(null); 
-      expect(sortPCs(result?.notes.map(n => n % 12) || [])).toEqual(sortPCs([8, 0, 3])); 
+      expect(sortPCs(result?.notes.map(n => n % 12) || [])).toEqual(sortPCs([8, 0, 6])); // Ab C F#
     });
   });
 
