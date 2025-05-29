@@ -163,7 +163,7 @@ export function assignSopranoOrMelodyNote(
       .sort((a, b) => a - b);
 
     if (availableNotes.length === 0) {
-      console.warn('No valid soprano notes found in range.');
+      console.warn('[WARN] No valid soprano notes found in range.');
       return null;
     }
 
@@ -184,7 +184,7 @@ export function assignSopranoOrMelodyNote(
   let keyDetails =
     Tonal.Key.majorKey(keySignature) ?? Tonal.Key.minorKey(keySignature);
   if (!keyDetails) {
-    console.warn('Invalid key signature, defaulting to C major scale');
+    console.warn('[WARN] Invalid key signature, defaulting to C major scale');
     keyDetails = Tonal.Key.majorKey('C');
   }
 
@@ -325,7 +325,7 @@ export function assignSopranoOrMelodyNote(
   availableNotes = Array.from(new Set(availableNotes)).sort((a, b) => a - b);
 
   if (availableNotes.length === 0) {
-    console.warn('No valid melody notes found in range.');
+    console.warn('[WARN] No valid melody notes found in range.');
     return null;
   }
 

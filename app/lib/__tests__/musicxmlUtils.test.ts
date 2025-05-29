@@ -198,3 +198,7 @@ describe('getNoteTypeFromDuration', () => {
     expect(getNoteTypeFromDuration(0.6, divisions)).toBe('32nd'); // ratio 0.15. >= 0.125 (32nd)
   });
 });
+
+// Tests for addNotesToStaffXML were removed as the function itself was removed
+// from musicxmlUtils.ts and its logic integrated into musicXmlWriter.ts.
+// The functionality is now implicitly tested via createMusicXMLString tests.

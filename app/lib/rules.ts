@@ -74,13 +74,13 @@ function checkParallels(
 
         if (isPerfectFifth) {
             console.warn(
-                `VOICE LEADING: Parallel 5th between ${part1Name} and ${part2Name} at ${loc}. ` +
+                `[WARN] VOICE LEADING: Parallel 5th between ${part1Name} and ${part2Name} at ${loc}. ` +
                 `Prev: ${midiToNoteName(v1p)} (${v1p})-${midiToNoteName(v2p)} (${v2p}), ` +
                 `Curr: ${midiToNoteName(v1c)} (${v1c})-${midiToNoteName(v2c)} (${v2c}).`
             );
         } else if (isPerfectOctaveOrUnison && intervalPrevSemi > 0) { // intervalPrevSemi > 0 excludes parallel unisons if not desired.
             console.warn(
-                `VOICE LEADING: Parallel Octave between ${part1Name} and ${part2Name} at ${loc}. ` +
+                `[WARN] VOICE LEADING: Parallel Octave between ${part1Name} and ${part2Name} at ${loc}. ` +
                 `Prev: ${midiToNoteName(v1p)} (${v1p})-${midiToNoteName(v2p)} (${v2p}), ` +
                 `Curr: ${midiToNoteName(v1c)} (${v1c})-${midiToNoteName(v2c)} (${v2c}).`
             );
@@ -131,17 +131,17 @@ export function checkVoiceLeadingRules(
         if (soprano === null || alto === null || tenor === null || bass === null) return;
 
         // Voice Crossing
-        if (alto > soprano) console.warn(`SATB Crossing: A>S at ${loc}`);
-        if (tenor > alto) console.warn(`SATB Crossing: T>A at ${loc}`);
-        if (bass > tenor) console.warn(`SATB Crossing: B>T at ${loc}`);
+        if (alto > soprano) console.warn(`[WARN] SATB Crossing: A>S at ${loc}`);
+        if (tenor > alto) console.warn(`[WARN] SATB Crossing: T>A at ${loc}`);
+        if (bass > tenor) console.warn(`[WARN] SATB Crossing: B>T at ${loc}`);
 
         // Voice Spacing
         if (strictness >= 4) {
-            if (soprano - alto > VOICE_SPACING_LIMIT_SATB.soprano_alto) console.warn(`SATB Spacing > P8 S/A at ${loc}`);
-            if (alto - tenor > VOICE_SPACING_LIMIT_SATB.alto_tenor) console.warn(`SATB Spacing > P8 A/T at ${loc}`);
+            if (soprano - alto > VOICE_SPACING_LIMIT_SATB.soprano_alto) console.warn(`[WARN] SATB Spacing > P8 S/A at ${loc}`);
+            if (alto - tenor > VOICE_SPACING_LIMIT_SATB.alto_tenor) console.warn(`[WARN] SATB Spacing > P8 A/T at ${loc}`);
         }
         if (strictness >= 6) {
-             if (tenor - bass > VOICE_SPACING_LIMIT_SATB.tenor_bass) console.warn(`SATB Spacing > P12 T/B at ${loc}`);
+             if (tenor - bass > VOICE_SPACING_LIMIT_SATB.tenor_bass) console.warn(`[WARN] SATB Spacing > P12 T/B at ${loc}`);
         }
 
         // Parallel Motion Checks
@@ -165,12 +165,12 @@ export function checkVoiceLeadingRules(
         const lowestAccomp = accompaniment[0]!;
 
         // Voice Crossing (Melody vs Accompaniment)
-        if (highestAccomp >= melody) console.warn(`Melody/Acc Crossing: High Accomp >= Melody at ${loc}`);
+        if (highestAccomp >= melody) console.warn(`[WARN] Melody/Acc Crossing: High Accomp >= Melody at ${loc}`);
 
         // Spacing (Melody vs Accompaniment)
         if (strictness >= 5) {
             if (melody - highestAccomp > MELODY_ACCOMPANIMENT_SPACING_LIMIT) {
-                console.warn(`Melody/Acc Spacing > ${MELODY_ACCOMPANIMENT_SPACING_LIMIT} semitones at ${loc}`);
+                console.warn(`[WARN] Melody/Acc Spacing > ${MELODY_ACCOMPANIMENT_SPACING_LIMIT} semitones at ${loc}`);
             }
         }
 

@@ -14,6 +14,30 @@ const ROMAN_MAP: Record<string, number> = {
   VII: 6,
 };
 
+// Default 7th types based on scale degree for major keys
+const MAJOR_KEY_DEFAULT_SEVENTHS: Record<number, string> = {
+  [ROMAN_MAP.I]: 'maj7',   // Imaj7
+  [ROMAN_MAP.II]: 'm7',    // iim7
+  [ROMAN_MAP.III]: 'm7',   // iiim7
+  [ROMAN_MAP.IV]: 'maj7',  // IVmaj7
+  [ROMAN_MAP.V]: '7',      // V7
+  [ROMAN_MAP.VI]: 'm7',    // vim7
+  [ROMAN_MAP.VII]: 'm7b5', // vii°7 (half-diminished)
+};
+
+// Default 7th types based on scale degree for minor keys
+// These often draw from natural minor for general chords, and harmonic minor for V and vii
+const MINOR_KEY_DEFAULT_SEVENTHS: Record<number, string> = {
+  [ROMAN_MAP.I]: 'm7',     // im7
+  [ROMAN_MAP.II]: 'm7b5',  // ii°7 (half-diminished, from natural minor's ii°)
+  [ROMAN_MAP.III]: 'maj7', // IIImaj7 (from natural minor)
+  [ROMAN_MAP.IV]: 'm7',    // ivm7
+  [ROMAN_MAP.V]: '7',      // V7 (from harmonic minor)
+  [ROMAN_MAP.VI]: 'maj7',  // VImaj7 (from natural minor)
+  [ROMAN_MAP.VII]: 'dim7', // vii°7 (fully-diminished, from harmonic minor)
+};
+
+
 /**
  * Parses a Roman numeral string to separate the base numeral from inversion/alteration.
  * Handles figured bass (e.g., "ii6", "IV64") and slash notation (e.g., "V/3", "V7/5").
@@ -207,8 +231,8 @@ function applyChordModifications(
       } else {
         // This means the requested quality (e.g. "dim", "aug") is incompatible with the tonic.
         // This could be a user error in Roman numeral (e.g., "Cdim" in G major's "IVdim") or a logic gap.
-        console.warn( // Keep as warn because the function can often proceed with the diatonic quality.
-          `applyChordModifications: Could not apply explicit quality "${qualityToApply}" to tonic "${tonic}" for Roman "${baseRomanInput}". Using diatonic quality.`,
+        console.warn( 
+          `[WARN] applyChordModifications: Could not apply explicit quality "${qualityToApply}" to tonic "${tonic}" for Roman "${baseRomanInput}". Using diatonic quality.`,
         );
       }
     }
@@ -239,80 +263,41 @@ function applyChordModifications(
     } else if (requestedFullDim) {
       seventhChordType = 'dim7'; // Fully-diminished 7th (e.g., C°7 -> Cdim7)
     } else {
-      // Infer 7th type based on diatonic function and common practice
+      // Infer 7th type using the configuration maps
       if (keyType === 'major') {
-        // I and IV in major are typically major 7ths.
-        if (scaleDegreeIndex === ROMAN_MAP.I || scaleDegreeIndex === ROMAN_MAP.IV) {
-          seventhChordType = 'maj7'; // e.g., CMaj7, FMaj7
-        }
-        // V in major is typically a dominant 7th.
-        else if (scaleDegreeIndex === ROMAN_MAP.V) {
-          seventhChordType = '7'; // e.g., G7
-        }
-        // ii, iii, vi in major are typically minor 7ths.
-        else if (
-          scaleDegreeIndex === ROMAN_MAP.II ||
-          scaleDegreeIndex === ROMAN_MAP.III ||
-          scaleDegreeIndex === ROMAN_MAP.VI
-        ) {
-          seventhChordType = 'm7'; // e.g., Dm7, Em7, Am7
-        }
-        // vii in major is typically a half-diminished 7th (m7b5).
-        else if (scaleDegreeIndex === ROMAN_MAP.VII) {
-          seventhChordType = 'm7b5'; // e.g., Bm7b5
-        }
-      } else {
-        // Minor key context (often uses harmonic minor for V and vii, natural/melodic for others)
-        // V in minor is typically a dominant 7th (from harmonic minor).
-        if (scaleDegreeIndex === ROMAN_MAP.V) {
-          seventhChordType = '7'; // e.g., G7 in C minor
-        }
-        // vii in minor is typically a fully-diminished 7th (from harmonic minor).
-        else if (scaleDegreeIndex === ROMAN_MAP.VII) {
-          seventhChordType = 'dim7'; // e.g., Bdim7 in C minor
-        }
-        // ii in minor is often half-diminished (m7b5).
-        else if (scaleDegreeIndex === ROMAN_MAP.II) {
-          seventhChordType = 'm7b5'; // e.g., Dm7b5 in C minor
-        }
-        // i in minor is typically a minor 7th.
-        else if (scaleDegreeIndex === ROMAN_MAP.I) {
-          seventhChordType = 'm7'; // e.g., Cm7
-        }
-        // III in minor can be maj7 (from natural/melodic)
-        else if (scaleDegreeIndex === ROMAN_MAP.III) {
-          // Check if natural minor chord is already maj7, e.g. Ebmaj7 in C minor
-          const naturalMinorChord = keyDetails.natural.chords[scaleDegreeIndex];
-          if (naturalMinorChord && Tonal.Chord.get(naturalMinorChord).type === 'major seventh') {
-            seventhChordType = 'maj7';
-          } else {
-             seventhChordType = 'm7'; // Default to m7 if III isn't naturally maj7
-          }
-        }
-        // iv in minor is typically a minor 7th.
-        else if (scaleDegreeIndex === ROMAN_MAP.IV) {
-          seventhChordType = 'm7'; // e.g., Fm7 in C minor
-        }
-        // VI in minor can be maj7 (from natural/melodic)
-        else if (scaleDegreeIndex === ROMAN_MAP.VI) {
-           // Check if natural minor chord is already maj7, e.g. Abmaj7 in C minor
-          const naturalMinorChord = keyDetails.natural.chords[scaleDegreeIndex];
-          if (naturalMinorChord && Tonal.Chord.get(naturalMinorChord).type === 'major seventh') {
-            seventhChordType = 'maj7';
-          } else {
-            seventhChordType = 'm7'; // Default to m7 if VI isn't naturally maj7
-          }
+        seventhChordType = MAJOR_KEY_DEFAULT_SEVENTHS[scaleDegreeIndex];
+      } else { // minor key
+        // Special handling for III and VI in minor if derived from natural minor and results in maj7
+        // The MINOR_KEY_DEFAULT_SEVENTHS map already accounts for common V7 and vii°7 from harmonic.
+        // For III and VI, Tonal.js's `keyDetails.natural.chords` would give the precise diatonic chord.
+        // If the diatonic triad on III or VI is major (e.g. Eb in C minor, Ab in C minor),
+        // then the 7th chord is often maj7.
+        if (scaleDegreeIndex === ROMAN_MAP.III || scaleDegreeIndex === ROMAN_MAP.VI) {
+            const naturalMinorChordSymbol = keyDetails.natural.chords[scaleDegreeIndex];
+            if (naturalMinorChordSymbol && Tonal.Chord.get(naturalMinorChordSymbol).type === 'major seventh') {
+                seventhChordType = 'maj7';
+            } else if (naturalMinorChordSymbol && Tonal.Chord.get(naturalMinorChordSymbol).type === 'major') {
+                 // If the natural minor triad is major, but not already maj7 (e.g. just "Eb"), common practice is maj7.
+                seventhChordType = 'maj7';
+            } else {
+                 // Otherwise, use the general minor key default (e.g. for minor triads becoming m7)
+                seventhChordType = MINOR_KEY_DEFAULT_SEVENTHS[scaleDegreeIndex];
+            }
+        } else {
+            seventhChordType = MINOR_KEY_DEFAULT_SEVENTHS[scaleDegreeIndex];
         }
       }
-      // Fallback if no specific type determined (should be rare)
+
+      // Fallback if no specific type determined from maps (should be very rare with comprehensive maps)
       if (!seventhChordType) {
-         // If the triad is major, default to dominant 7th. If minor/dim, default to minor 7th.
+        // This fallback logic can be simplified as the maps should cover all degrees.
+        // If the triad is major, default to dominant 7th. If minor/dim, default to minor 7th.
         if (triadDetails.type === "major") seventhChordType = "7";
         else if (triadDetails.type === "minor") seventhChordType = "m7";
         else if (triadDetails.type === "diminished") seventhChordType = "m7b5"; // Or dim7 if context suggests
         else seventhChordType = "7"; // Default fallback
         console.warn(
-            `applyChordModifications: Could not determine specific 7th type for "${baseRomanInput}" on triad "${finalChordSymbol}" (key: ${keyDetails.tonic} ${keyType}, degree: ${scaleDegreeIndex}). Defaulting to inferred "${seventhChordType}".`,
+            `[WARN] applyChordModifications: Could not determine specific 7th type for "${baseRomanInput}" on triad "${finalChordSymbol}" (key: ${keyDetails.tonic} ${keyType}, degree: ${scaleDegreeIndex}). Defaulting to inferred "${seventhChordType}".`,
           );
       }
     }
@@ -327,8 +312,8 @@ function applyChordModifications(
       } else {
         // This means the determined seventhChordType (e.g., "maj7", "m7b5") isn't valid for the tonic.
         // This is more of a logic error in determining seventhChordType.
-        console.warn( // Keep as warn, as it might fallback to a simpler 7th or just the triad.
-          `applyChordModifications: Constructed invalid 7th chord symbol "${potentialSeventhSymbol}" for Roman "${baseRomanInput}". Attempting generic '7'.`,
+        console.warn( 
+          `[WARN] applyChordModifications: Constructed invalid 7th chord symbol "${potentialSeventhSymbol}" for Roman "${baseRomanInput}". Attempting generic '7'.`,
         );
         // Try a generic dominant 7th as a last resort if adding a specific 7th failed
         const genericSeventhSymbol = triadDetails.tonic + '7';
@@ -336,12 +321,12 @@ function applyChordModifications(
         if (!genericSeventhInfo.empty) {
           finalChordSymbol = genericSeventhInfo.symbol;
            console.warn(
-            `applyChordModifications: Using generic dominant 7th "${finalChordSymbol}" as fallback for Roman "${baseRomanInput}".`
+            `[WARN] applyChordModifications: Using generic dominant 7th "${finalChordSymbol}" as fallback for Roman "${baseRomanInput}".`
            );
         } else {
           // If even generic '7' fails, it's very problematic. Stick to the triad.
            console.warn(
-            `applyChordModifications: Could not form any valid 7th chord for Roman "${baseRomanInput}" on base "${triadDetails.symbol}". Using triad symbol.`
+            `[WARN] applyChordModifications: Could not form any valid 7th chord for Roman "${baseRomanInput}" on base "${triadDetails.symbol}". Using triad symbol.`
            );
            // finalChordSymbol remains the triad symbol
         }
@@ -433,15 +418,13 @@ function getChordNotesAndBass(
       } else {
          // This warning is kept as it indicates a potential issue with a specific interval transposition
          // but doesn't necessarily invalidate the entire chord.
-         console.warn(`getChordNotesAndBass: Could not get MIDI for transposed note "${transposedNoteName}" (root: "${rootNoteNameWithOctave}", interval: "${interval}") for chord ${finalChordSymbol}`);
+         console.warn(`[WARN] getChordNotesAndBass: Could not get MIDI for transposed note "${transposedNoteName}" (root: "${rootNoteNameWithOctave}", interval: "${interval}") for chord ${finalChordSymbol}`);
       }
-    } catch (transposeError: unknown) { // Catch unknown for better type safety
+    } catch (transposeError: unknown) {
       // This error might occur if Tonal.transpose fails with an unusual interval string.
-      console.error(
+      throw new MusicTheoryError(
         `getChordNotesAndBass: Error transposing root "${rootNoteNameWithOctave}" by interval "${interval}" for chord "${finalChordSymbol}": ${(transposeError as Error).message}`,
       );
-      // Depending on strictness, one might choose to throw here or continue with fewer notes.
-      // For now, we continue, and the length check below will handle if no notes are generated.
     }
   });
 
@@ -479,16 +462,16 @@ function getChordNotesAndBass(
           // This warning is important as it indicates a potential music theory violation or an unusual inversion.
           // The function will still return the requiredBassPc, but the caller should be aware.
           console.warn(
-            `getChordNotesAndBass: Calculated bass PC ${requiredBassPc} ("${bassNoteName}") for inversion interval "${bassInterval}" on chord "${finalChordSymbol}" (chroma: ${finalChord.chroma}) is not one of the chord's primary pitch classes. This might indicate an unusual inversion (e.g., V/b3 where b3 is not in V) or a parsing issue. The bass note might be a non-chord tone.`,
+            `[WARN] getChordNotesAndBass: Calculated bass PC ${requiredBassPc} ("${bassNoteName}") for inversion interval "${bassInterval}" on chord "${finalChordSymbol}" (chroma: ${finalChord.chroma}) is not one of the chord's primary pitch classes. This might indicate an unusual inversion (e.g., V/b3 where b3 is not in V) or a parsing issue. The bass note might be a non-chord tone.`,
           );
         }
       } else {
         // This means Tonal.transpose might have returned a note Tonal.Note.get can't process, or bassInterval was problematic.
-        console.warn( // Keep as warn, requiredBassPc will remain null.
-          `getChordNotesAndBass: Could not determine chroma for calculated bass note "${bassNoteName}" (chord: "${finalChordSymbol}", root: "${rootNoteNameWithOctave}", bass interval: "${bassInterval}").`,
+        console.warn( 
+          `[WARN] getChordNotesAndBass: Could not determine chroma for calculated bass note "${bassNoteName}" (chord: "${finalChordSymbol}", root: "${rootNoteNameWithOctave}", bass interval: "${bassInterval}").`,
         );
       }
-    } catch (e: unknown) { // Catch unknown for better type safety
+    } catch (e: unknown) { 
       // This error can occur if Tonal.transpose fails with the bassInterval.
       console.error( // Log as error as it's an unexpected failure in a core utility.
         `getChordNotesAndBass: Error transposing for bass note. Chord: "${finalChordSymbol}", Root: "${rootNoteNameWithOctave}", Bass Interval: "${bassInterval}". Error: ${(e as Error).message}`,
@@ -622,15 +605,15 @@ export function midiToNoteName(midi: number | null): string | null {
     // This is a utility function; throwing might be too aggressive if called in contexts
     // where a null return is handled. For now, keep as console.warn and return null.
     // If strictness is needed, an InvalidInputError could be thrown.
-    // console.warn(`midiToNoteName: Invalid MIDI number: ${midi}.`);
+    // console.warn(`[WARN] midiToNoteName: Invalid MIDI number: ${midi}.`);
     return null;
   }
   try {
     return Tonal.Note.fromMidi(midi);
-  } catch (e: unknown) { // Catch unknown for better type safety
+  } catch (e: unknown) { 
     // This error is rare if the input number is within 0-127.
     // It might occur if Tonal.js has an internal issue or a very unexpected MIDI value bypasses checks.
-    console.warn(`midiToNoteName: Error converting MIDI ${midi} to note name: ${(e as Error).message}`);
+    console.warn(`[WARN] midiToNoteName: Error converting MIDI ${midi} to note name: ${(e as Error).message}`);
     return null; // Return null to indicate failure, allowing caller to handle.
   }
 }

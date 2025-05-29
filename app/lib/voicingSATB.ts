@@ -6,6 +6,7 @@ import {
   DEFAULT_OCTAVE,
 } from './constants';
 import { findClosestNote } from './voicingUtils';
+import { GenerationError } from './errors'; // Added import
 // import { midiToNoteName } from './harmonyUtils'; // Used only for console logs
 
 /**
@@ -41,7 +42,7 @@ export function assignBassNoteSATB(
     .sort((a, b) => a - b); // Ensure sorted
 
   if (allowedBassNotes.length === 0) {
-    console.warn('SATB: No valid bass notes found in range.');
+    console.warn('[WARN] SATB: No valid bass notes found in range.');
     return null;
   }
 
@@ -64,7 +65,7 @@ export function assignBassNoteSATB(
     } else {
       // Required bass note PC not found in range! Fall back to root position logic.
       console.warn(
-        `SATB Bass: Required inversion PC ${requiredBassPc} not found in bass range [${minRange}-${maxRange}]. Reverting to root preference.`,
+        `[WARN] SATB Bass: Required inversion PC ${requiredBassPc} not found in bass range [${minRange}-${maxRange}]. Reverting to root preference.`,
       );
       // Continue to root position logic below
     }
@@ -81,11 +82,11 @@ export function assignBassNoteSATB(
     const fifthPc = (rootNotePc + 7) % 12; // Try fifth
     const fifthOptions = allowedBassNotes.filter((n) => n % 12 === fifthPc);
     if (fifthOptions.length > 0) {
-      console.log(`SATB Bass: Root PC ${rootNotePc} not in range. Using 5th.`);
+      console.info(`[INFO] SATB Bass: Root PC ${rootNotePc} not in range. Using 5th.`);
       bassCandidates = fifthOptions;
     } else {
       console.warn(
-        `SATB Bass: Root PC ${rootNotePc} and 5th PC ${fifthPc} not in range. Using lowest available.`,
+        `[WARN] SATB Bass: Root PC ${rootNotePc} and 5th PC ${fifthPc} not in range. Using lowest available.`,
       );
       bassCandidates = allowedBassNotes; // Use any allowed note if root/5th unavailable
       // Return the absolute lowest note available in this emergency case
@@ -207,10 +208,9 @@ export function assignInnerVoicesSATB(
         chordRootPc; // Absolute fallback: root
       if (fallbackPc !== undefined) {
         pcsToDouble.push(fallbackPc);
-        console.warn(`SATB: Emergency doubling PC ${fallbackPc}`);
+        console.warn(`[WARN] SATB: Emergency doubling PC ${fallbackPc}`);
       } else {
-        console.error('SATB: Cannot find any PC to double!');
-        break;
+        throw new GenerationError('SATB: Cannot find any PC to double for inner voices!');
       }
       if (pcsToDouble.length > 5) break; // Safety
     }
@@ -320,15 +320,15 @@ export function assignInnerVoicesSATB(
     (n) => n % 12 === altoTargetPc,
   );
   if (altoOptionsToUse.length === 0) {
-    console.log(
-      `SATB Alto: Target PC ${altoTargetPc} not available. Trying any allowed note.`,
+    console.info(
+      `[INFO] SATB Alto: Target PC ${altoTargetPc} not available. Trying any allowed note.`,
     );
     altoOptionsToUse = allowedAltoNotes; // Use any allowed note if target PC not available
   }
 
   if (altoOptionsToUse.length === 0) {
     console.warn(
-      `SATB: No valid notes for Alto (Target PC: ${altoTargetPc}) meeting constraints. Relaxing S-A spacing.`,
+      `[WARN] SATB: No valid notes for Alto (Target PC: ${altoTargetPc}) meeting constraints. Relaxing S-A spacing.`,
     );
     // Relax S-A spacing constraint
     altoOptionsToUse = fullChordNotePool
@@ -351,10 +351,7 @@ export function assignInnerVoicesSATB(
     }
 
     if (altoOptionsToUse.length === 0) {
-      console.error(
-        'SATB: Still no Alto notes even after relaxing S-A. Cannot assign.',
-      );
-      return { tenorNoteMidi: null, altoNoteMidi: null };
+      throw new GenerationError('SATB: Still no Alto notes even after relaxing S-A spacing. Cannot assign Alto.');
     }
   }
 
@@ -366,12 +363,12 @@ export function assignInnerVoicesSATB(
   );
 
   if (altoNoteMidi === null) {
-    console.error('SATB: Failed to select an Alto note from candidates.');
     // Emergency fallback: pick middle note from candidates
-    altoNoteMidi =
-      altoOptionsToUse[Math.floor(altoOptionsToUse.length / 2)] ?? null;
-    if (altoNoteMidi === null)
-      return { tenorNoteMidi: null, altoNoteMidi: null }; // Give up if still null
+    altoNoteMidi = altoOptionsToUse[Math.floor(altoOptionsToUse.length / 2)] ?? null;
+    if (altoNoteMidi === null) {
+        throw new GenerationError('SATB: Failed to select an Alto note from candidates, and fallback also failed.');
+    }
+    console.warn('[WARN] SATB: findClosestNote returned null for Alto, used emergency fallback.'); 
   }
 
   // Find Tenor Note (must be below chosen Alto and respect A-T spacing)
@@ -385,15 +382,15 @@ export function assignInnerVoicesSATB(
     (n) => n % 12 === tenorTargetPc,
   );
   if (tenorOptionsToUse.length === 0) {
-    console.log(
-      `SATB Tenor: Target PC ${tenorTargetPc} not available. Trying any allowed note.`,
+    console.info(
+      `[INFO] SATB Tenor: Target PC ${tenorTargetPc} not available. Trying any allowed note.`,
     );
     tenorOptionsToUse = allowedTenorNotes; // Use any allowed note if target PC not available
   }
 
   if (tenorOptionsToUse.length === 0) {
     console.warn(
-      `SATB: No valid notes for Tenor (Target PC: ${tenorTargetPc}) below Alto ${midiToNoteName(altoNoteMidi)}. Relaxing A-T spacing.`,
+      `[WARN] SATB: No valid notes for Tenor (Target PC: ${tenorTargetPc}) below Alto ${midiToNoteName(altoNoteMidi)}. Relaxing A-T spacing.`,
     );
     // Relax A-T spacing, just ensure below Alto
     allowedTenorNotes = allowedTenorNotesBase.filter((n) => n < altoNoteMidi!);
@@ -403,11 +400,10 @@ export function assignInnerVoicesSATB(
     if (tenorOptionsToUse.length === 0) tenorOptionsToUse = allowedTenorNotes;
 
     if (tenorOptionsToUse.length === 0) {
-      console.error(
-        `SATB: Still no Tenor notes below Alto ${midiToNoteName(altoNoteMidi)} even after relaxing A-T. Cannot assign Tenor.`,
-      );
-      // Return the valid Alto note found
-      return { tenorNoteMidi: null, altoNoteMidi: altoNoteMidi };
+      // If altoNoteMidi is null here, it means the previous block also failed critically.
+      // However, the logic implies altoNoteMidi should be set if we reach here.
+      const altoNoteName = altoNoteMidi !== null ? midiToNoteName(altoNoteMidi) : 'unknown';
+      throw new GenerationError(`SATB: Still no Tenor notes below Alto ${altoNoteName} even after relaxing A-T spacing. Cannot assign Tenor.`);
     }
   }
 
@@ -423,41 +419,37 @@ export function assignInnerVoicesSATB(
   );
 
   if (tenorNoteMidi === null) {
-    console.error('SATB: Failed to select a Tenor note from candidates.');
     // Emergency fallback: pick highest note from candidates
     tenorNoteMidi = tenorOptionsToUse[tenorOptionsToUse.length - 1] ?? null;
-    if (tenorNoteMidi === null)
-      return { tenorNoteMidi: null, altoNoteMidi: altoNoteMidi }; // Give up Tenor
+    if (tenorNoteMidi === null) {
+        throw new GenerationError('SATB: Failed to select a Tenor note from candidates, and fallback also failed.');
+    }
+    console.warn('[WARN] SATB: findClosestNote returned null for Tenor, used emergency fallback.'); 
   }
 
   // Final Check: Ensure Tenor is strictly below Alto
-  if (tenorNoteMidi >= altoNoteMidi) {
-    console.error(
-      `SATB INTERNAL ERROR: Tenor ${midiToNoteName(tenorNoteMidi)} >= Alto ${midiToNoteName(altoNoteMidi)}. Invalidating Tenor. Trying lower tenor.`,
-    );
+  if (tenorNoteMidi !== null && altoNoteMidi !== null && tenorNoteMidi >= altoNoteMidi) {
+    const tenorName = midiToNoteName(tenorNoteMidi);
+    const altoName = midiToNoteName(altoNoteMidi);
     // Try finding the next lowest valid tenor note
     const lowerTenorOptions = tenorOptionsToUse.filter(
-      (n) => n < tenorNoteMidi!,
+      (n) => n < tenorNoteMidi!, // Use the problematic tenorNoteMidi here
     );
     if (lowerTenorOptions.length > 0) {
-      tenorNoteMidi = findClosestNote(
+      const newTenorMidi = findClosestNote(
         tenorTargetMidi, // Keep original target
         lowerTenorOptions,
         previousTenorMidi,
         smoothness,
       );
-      if (tenorNoteMidi === null || tenorNoteMidi >= altoNoteMidi) {
-        // If still fails or null
-        console.error(
-          `SATB: Could not find suitable lower tenor. Tenor assignment failed.`,
-        );
-        tenorNoteMidi = null;
+      if (newTenorMidi !== null && newTenorMidi < altoNoteMidi) {
+        console.warn(`[WARN] SATB: Corrected Tenor ${tenorName} to ${midiToNoteName(newTenorMidi)} to be below Alto ${altoName}.`);
+        tenorNoteMidi = newTenorMidi;
+      } else {
+        throw new GenerationError(`SATB INTERNAL ERROR: Tenor ${tenorName} was >= Alto ${altoName}. Attempt to find lower tenor failed or still invalid. New tenor: ${newTenorMidi ? midiToNoteName(newTenorMidi) : 'null'}.`);
       }
     } else {
-      console.error(
-        `SATB: No lower tenor options available. Tenor assignment failed.`,
-      );
-      tenorNoteMidi = null;
+      throw new GenerationError(`SATB INTERNAL ERROR: Tenor ${tenorName} was >= Alto ${altoName}. No lower tenor options available.`);
     }
   }
 

@@ -174,7 +174,7 @@ export function generateRhythm(meter: string, complexity: number): number[] {
       // For now, the console.warn is acceptable as the final check will report discrepancy.
       // If this were a critical error, a GenerationError could be thrown.
       console.warn(
-        `generateRhythm: No standard note value fits remaining duration ${remainingDuration.toFraction()} for meter ${meter}. Measure might be incomplete or slightly off.`,
+        `[WARN] generateRhythm: No standard note value fits remaining duration ${remainingDuration.toFraction()} for meter ${meter}. Measure might be incomplete or slightly off.`,
       );
       break;
     }
@@ -206,7 +206,7 @@ export function generateRhythm(meter: string, complexity: number): number[] {
   );
   if (currentSum.compare(targetDuration) !== 0) {
     console.warn(
-      `Warning: Final rhythm duration ${currentSum.toFraction()} does not match target ${targetDuration.toFraction()}. Rhythm: [${rhythm.join(', ')}]`,
+      `[WARN] Final rhythm duration ${currentSum.toFraction()} does not match target ${targetDuration.toFraction()}. Rhythm: [${rhythm.join(', ')}]`,
     );
   }
 
