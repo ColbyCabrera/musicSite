@@ -44,6 +44,33 @@ function getFifths(tonic: string): number {
  * It correctly handles creating `<note>` elements with nested `<pitch>`, `<duration>`,
  * `<type>`, etc., or `<rest>` elements. It also adds `<chord/>` for subsequent notes
  * in a simultaneous group within the same voice.
+ * 
+ * The function iterates through each `MusicalEvent` and maps its properties as follows:
+ * - `event.type`: Determines the primary MusicXML element.
+ *   - If `'note'`, a `<note>` element is created.
+ *   - If `'rest'`, a `<rest>` element is created within the `<note>` element.
+ * - `event.midi` (only for `type: 'note'`):
+ *   - Converted to pitch components using `midiToMusicXMLPitch`.
+ *   - Populates the `<pitch>` element with child elements:
+ *     - `<step>`: The note letter (A-G).
+ *     - `<alter>`: (Optional) The alteration (e.g., 1 for sharp, -1 for flat), if applicable.
+ *     - `<octave>`: The octave number.
+ *   - If `midiToMusicXMLPitch` fails to convert the MIDI value (e.g., it's invalid), a `<rest>` element
+ *     is generated as a fallback to maintain rhythmic integrity, and a warning is logged.
+ * - `event.durationTicks`: Populates the `<duration>` element. This value represents the
+ *   note/rest's length in terms of MusicXML divisions (as defined in the `<attributes>` element).
+ * - `event.staffNumber`: Populates the `<staff>` element, indicating which staff the event belongs to.
+ * - `event.voiceNumber`: Populates the `<voice>` element, specifying the voice on the staff.
+ * - `event.stemDirection` (only for `type: 'note'`): Populates the `<stem>` element (e.g., "up", "down").
+ * - `event.noteType`: Populates the `<type>` element (e.g., "quarter", "eighth", "half", "whole").
+ *   This defines the graphical appearance of the note/rest.
+ * - `event.isChordElement` (only for `type: 'note'`):
+ *   - If `true`, a `<chord/>` empty element is added to the `<note>` element. This indicates that
+ *     this note sounds simultaneously with the preceding non-chord note in the same voice,
+ *     forming part of a chord.
+ *
+ * If an event has `type: 'note'` but `event.midi` is null/undefined, or if the `event.type` itself
+ * is unrecognized, a warning is logged, and the event is skipped (the malformed `<note>` element is removed).
  *
  * @param {XMLBuilder} measureBuilder - The `xmlbuilder2` XMLBuilder instance for the current `<measure>` element.
  * @param {MusicalEvent[]} events - An array of `MusicalEvent` objects to be added to this measure for a single voice.

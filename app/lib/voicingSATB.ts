@@ -433,7 +433,8 @@ export function assignInnerVoicesSATB(
     const altoName = midiToNoteName(altoNoteMidi);
     // Try finding the next lowest valid tenor note
     const lowerTenorOptions = tenorOptionsToUse.filter(
-      (n) => n < tenorNoteMidi!, // Use the problematic tenorNoteMidi here
+      // Filter for notes strictly lower than the current tenorNoteMidi, which has been identified as crossing or unison with alto.
+      (n) => n < tenorNoteMidi!, 
     );
     if (lowerTenorOptions.length > 0) {
       const newTenorMidi = findClosestNote(

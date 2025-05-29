@@ -91,12 +91,31 @@ describe('parseRomanNumeral', () => {
     // 'I/8' might be parsed as baseRoman 'I', bassInterval '8' if '8' is allowed.
     // The test should be for what parseRomanNumeral *does*, not what it *should* do musically for 'I/8'.
     // Tonal.transpose('C', '8') is valid ('C an octave higher').
-    expect(parseRomanNumeral('I/8')).toEqual({ baseRoman: 'I', bassInterval: '8' }); 
-    // 'I67' - is '67' a valid figure? No. So 'I67' becomes baseRoman.
-    expect(parseRomanNumeral('I67')).toEqual({ baseRoman: 'I67', bassInterval: '1' });
+    expect(parseRomanNumeral('I/8')).toEqual({ baseRoman: 'I', bassInterval: '8' });
+    // 'I67' should now throw an error due to unrecognized figure "67"
+    expect(() => parseRomanNumeral('I67')).toThrow(new InvalidInputError('parseRomanNumeral: Unrecognized or invalid figured bass notation "67" in Roman numeral "I67". Supported figures are 6, 64, 7 (as figure), 65, 43, 42, 2 and slash notation.'));
   });
 
-  test('should correctly parse complex qualities with inversions', () => {
+  test('should throw InvalidInputError for unrecognized figured bass notations', () => {
+    const expectedErrorMessagePattern = /Unrecognized or invalid figured bass notation/;
+    expect(() => parseRomanNumeral('IV4')).toThrow(InvalidInputError);
+    expect(() => parseRomanNumeral('IV4')).toThrow(expectedErrorMessagePattern);
+    
+    expect(() => parseRomanNumeral('ii3')).toThrow(InvalidInputError);
+    expect(() => parseRomanNumeral('ii3')).toThrow(expectedErrorMessagePattern);
+
+    expect(() => parseRomanNumeral('V1')).toThrow(InvalidInputError);
+    expect(() => parseRomanNumeral('V1')).toThrow(expectedErrorMessagePattern);
+    
+    expect(() => parseRomanNumeral('I46')).toThrow(InvalidInputError); // Figure "46" is not standard
+    expect(() => parseRomanNumeral('I46')).toThrow(expectedErrorMessagePattern);
+
+    // Valid qualities with invalid figures
+    expect(() => parseRomanNumeral('Vdom3')).toThrow(InvalidInputError); // "dom" is not a figure
+    expect(() => parseRomanNumeral('IMaj4')).toThrow(InvalidInputError);
+  });
+
+  test('should correctly handle valid complex qualities with inversions (no error)', () => {
     expect(parseRomanNumeral('iiø42')).toEqual({ baseRoman: 'iiø', bassInterval: '7'}); 
     expect(parseRomanNumeral('vii°743')).toEqual({ baseRoman: 'vii°7', bassInterval: '5'});
   });

@@ -97,11 +97,48 @@ function parseRomanNumeral(romanWithInversion: string): {
     // Tonal.transpose can usually handle "3", "b3", "5", "#5", "7" directly.
     // No complex translation needed here for Tonal.js.
   } else {
+    // Neither specific figured bass nor slash notation matched.
+    // The full string is currently considered the baseRoman.
+    // Now, check if it contains an unrecognized/invalid figure.
+    const endsWithNumericFigure = romanWithInversion.match(/(\d+)$/);
+    if (endsWithNumericFigure) {
+      const numericEnding = endsWithNumericFigure[1];
+      // Common chord extensions like 7, 9, 11, 13 are part of the baseRoman quality for Tonal.js
+      const isCommonExtensionNumber = ["7", "9", "11", "13"].includes(numericEnding);
+      
+      // Check if the part before the numericEnding looks like a simple Roman numeral base
+      // (e.g., "I" in "I4", "V" in "V7").
+      // This helps differentiate "V7" (valid quality) from "I4" (invalid figure).
+      const potentialBasePart = romanWithInversion.substring(0, romanWithInversion.length - numericEnding.length);
+      const isValidRomanStem = /^[#b]?[ivxlcdmIVXLCDM]+$/i.test(potentialBasePart);
+
+      // If it ends with numbers that are NOT common extensions, AND the part before it is a valid Roman stem,
+      // then it's likely an unsupported figure.
+      // The original figuredBassMatch already checked for 6, 64, 7(as figure), 65, 43, 42, 2.
+      // So, if we are here, and it ends with a number, and it's not a common extension, it's an error.
+      if (!isCommonExtensionNumber && isValidRomanStem) {
+        // Allow cases like "Vsus4" where "4" is part of quality, not figure.
+        // Tonal.js handles many suffixes. A simple check for trailing digits not part of
+        // common extensions (7,9,11,13) might be too broad if a valid chord quality ends in another digit.
+        // However, the problem asks for stricter handling of *unrecognized figures*.
+        // If it wasn't '6', '64', '7'(as fig), '65', '43', '42', '2', then any other trailing number
+        // on a simple Roman stem (like 'I4', 'ii3', 'V8') should be an error.
+        // More complex qualities like 'sus4', 'add9' are part of `baseRoman` and Tonal will parse them.
+        // The key is that `figuredBassMatch` (with its `(?![a-zA-Z#b])` lookahead) did *not* match.
+        // So, if `romanWithInversion` is "I4", `figuredBassMatch` fails. `endsWithNumericFigure` is "4".
+        // `isCommonExtensionNumber` is false. `isValidRomanStem` is true. This is an error.
+        // If `romanWithInversion` is "Vsus4", `figuredBassMatch` fails. `endsWithNumericFigure` is "4".
+        // `isCommonExtensionNumber` is false. `isValidRomanStem` for "Vsus" is false. So, not an error here. Tonal will handle "Vsus4".
+         throw new InvalidInputError(
+            `parseRomanNumeral: Unrecognized or invalid figured bass notation "${numericEnding}" in Roman numeral "${romanWithInversion}". Supported figures are 6, 64, 7 (as figure), 65, 43, 42, 2 and slash notation.`
+         );
+      }
+    }
     baseRoman = romanWithInversion;
-    // bassInterval remains '1' (root position)
+    // bassInterval remains '1' (root position) as no valid inversion figure/slash was parsed.
   }
 
-  if (!baseRoman) {
+  if (!baseRoman) { // Should be hard to reach if logic above is sound and romanWithInversion is not empty
     // This case should ideally be rare if regex are comprehensive.
     // If it occurs, it's likely an unparsable Roman numeral format.
     throw new MusicTheoryError(
@@ -473,10 +510,10 @@ function getChordNotesAndBass(
       }
     } catch (e: unknown) { 
       // This error can occur if Tonal.transpose fails with the bassInterval.
-      console.error( // Log as error as it's an unexpected failure in a core utility.
-        `getChordNotesAndBass: Error transposing for bass note. Chord: "${finalChordSymbol}", Root: "${rootNoteNameWithOctave}", Bass Interval: "${bassInterval}". Error: ${(e as Error).message}`,
+      throw new MusicTheoryError(
+        `getChordNotesAndBass: Error transposing for bass note. Chord: "${finalChordSymbol}", Root: "${rootNoteNameWithOctave}", Bass Interval: "${bassInterval}". Error: ${(e as Error).message}`
       );
-      // requiredBassPc remains null, implying root position or failure to determine inversion.
+      // requiredBassPc would have remained null if error not thrown.
     }
   }
 
