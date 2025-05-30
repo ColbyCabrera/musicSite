@@ -50,8 +50,6 @@ function checkParallels(
     if (v1p === v1c && v2p === v2c) return;
 
     // Check for similar motion (optional, but common rule)
-    const v1Direction = Math.sign(v1c - v1p);
-    const v2Direction = Math.sign(v2c - v2p);
     // Determine direction of movement for each voice.
     const v1Direction = Math.sign(v1c - v1p);
     const v2Direction = Math.sign(v2c - v2p);

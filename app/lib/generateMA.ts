@@ -490,10 +490,6 @@ function isInRange(
   const minMidi = Note.midi(minRangeNote);
   const maxMidi = Note.midi(maxRangeNote);
 
-  const noteMidi = Note.midi(noteName);
-  const minMidi = Note.midi(minRangeNote);
-  const maxMidi = Note.midi(maxRangeNote);
-
   if (noteMidi === null || minMidi === null || maxMidi === null) {
     // console.warn // Potentially too noisy for a utility; caller might handle.
     // Consider if this should throw InvalidInputError if strictness is required.
