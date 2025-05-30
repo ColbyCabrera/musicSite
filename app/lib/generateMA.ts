@@ -48,16 +48,8 @@ export default async function generateMA(
     let geminiResponseText: string | undefined;
     try {
       const genAI = getGenAI(); // Initialize or get existing instance
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash-preview-0514", // Ensure this model name is current
-      // GenerationConfig and SafetySettings can be added here if needed
-      // generationConfig: { temperature: 0.7 },
-      // safetySettings: [
-      //   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-      //   // Add other categories as needed
-      // ]
-    });
-    const result = await model.generateContent({
+    const result = await genAI.models.generateContent({ // Correct for v0.13.0
+      model: "gemini-1.5-flash-preview-0514", // Model specified here
       contents: [{role: "user", parts: [{
           text: `You are an expert virtual composer specializing in creating sophisticated and stylistically appropriate musical accompaniments.
 
@@ -110,8 +102,7 @@ The accompaniment MUST be an array of note objects. Each object must have a "not
 Example: [{"note": "C3", "rhythm": 4}, {"note": "E3", "rhythm": 4}, {"note": "G3", "rhythm": 4}, ...]
 Return ONLY the JSON array of accompaniment note objects. Do not include any explanatory text or apologies if the task is challenging. Focus on generating the highest quality musical output based on these detailed instructions.`}]}],
     });
-    const response = result.response;
-    geminiResponseText = response.text();
+    geminiResponseText = result.text; // Access text property directly from the result object
 
   } catch (error: unknown) { // Catch unknown to inspect it
     if (error instanceof Error) {
@@ -138,8 +129,8 @@ Return ONLY the JSON array of accompaniment note objects. Do not include any exp
       const parsedAccompaniment = JSON.parse(jsonToParse) as Melody;
       accompaniment = parsedAccompaniment; // Assign parsed accompaniment
     } catch (parseError: unknown) {
-      console.error('Failed to parse Gemini API response as JSON:', responseText, parseError);
-      throw new GenerationError(`Failed to parse accompaniment from API response. Raw response: "${responseText}"`);
+      console.error('Failed to parse Gemini API response as JSON:', geminiResponseText, parseError);
+      throw new GenerationError(`Failed to parse accompaniment from API response. Raw response: "${geminiResponseText}"`);
     }
   } else {
     accompaniment = []; // Set to empty array if AI accompaniment is disabled
@@ -174,7 +165,7 @@ function generateMelody(
 
 
   progression.forEach((chordSymbol, i) => {
-    let chordInfo;
+    let chordInfo: { notes: number[]; noteNames: string[]; requiredBassPc: number | null; } | null;
     try {
       chordInfo = getChordInfoFromRoman(chordSymbol, keySignature);
     } catch (e) {
@@ -252,14 +243,14 @@ function generateMelody(
       // Handle the case where possibleNotes might be null or empty
       let nextMelodyNote: string;
       if (possibleNotes && possibleNotes.length > 0) {
-        nextMelodyNote = getNextNote(melody, key, possibleNotes);
+        nextMelodyNote = getNextNote(melody, keySignature, possibleNotes);
       } else {
         // Fallback strategy if no possible notes were determined (e.g., all weights were zero, or items were empty)
         // Revert to the last note or a simple step from it, or tonic.
-        console.warn(`generateMelody: No possible notes from weighted choice for chord ${chord}. Using fallback.`);
-        const fallbackLastNote = melody[melody.length -1]?.note ?? (keyObj.scale[0] + '4');
+        console.warn(`generateMelody: No possible notes from weighted choice for chord ${chordSymbol}. Using fallback.`);
+        const fallbackLastNote = melody[melody.length -1]?.note ?? (keyDetails.scale[0] + '4');
         // Attempt a simple step up or down, or just use the fallbackLastNote
-        nextMelodyNote = getStepUp(fallbackLastNote, key) || fallbackLastNote; 
+        nextMelodyNote = getStepUp(fallbackLastNote, keySignature) || fallbackLastNote; 
         // Ensure the fallback is also within range (important if lastNote was near boundary)
         nextMelodyNote = putInRange(nextMelodyNote, minRange, maxRange);
       }
@@ -369,7 +360,7 @@ function getStepUp(noteName: string, keySignature: string): string | null { // R
   
   // Determine octave: if nextPc is lower than currentPc (e.g. B to C), increment octave.
   let octave = currNoteDetails.oct ?? 4; // Fallback octave
-  if (Tonal.Note.chroma(nextPc)! < Tonal.Note.chroma(currNoteDetails.pc)!) {
+  if (Note.chroma(nextPc)! < Note.chroma(currNoteDetails.pc)!) {
     octave++;
   }
   return nextPc + octave;
@@ -397,7 +388,7 @@ function getStepDown(noteName: string, keySignature: string): string | null { //
   const prevPc = scale[prevPcIndex];
 
   let octave = currNoteDetails.oct ?? 4;
-  if (Tonal.Note.chroma(prevPc)! > Tonal.Note.chroma(currNoteDetails.pc)!) {
+  if (Note.chroma(prevPc)! > Note.chroma(currNoteDetails.pc)!) {
     octave--;
   }
   return prevPc + octave;
