@@ -49,12 +49,12 @@ const MINOR_KEY_DEFAULT_SEVENTHS: Record<number, string> = {
  * relative to the chord root, not necessarily its precise quality independently.
  *
  * @param romanWithInversion - The full Roman numeral string.
- * @returns Object with base Roman numeral and bass interval string, or null if invalid.
+ * @returns Object with base Roman numeral and bass interval string. Throws error on invalid input.
  */
 function parseRomanNumeral(romanWithInversion: string): {
   baseRoman: string;
   bassInterval: string | null; // e.g., "1", "3", "5", "7", "b3", "#5"
-} | null {
+} {
   // Regex for figured bass (e.g., 6, 64, 7, 65, 43, 42, 2)
   // Ensures figure is at the end and not part of a chord name like 'Cmaj7'
   const figuredBassMatch = romanWithInversion.match(
@@ -152,12 +152,12 @@ function parseRomanNumeral(romanWithInversion: string): {
 /**
  * Retrieves key details (tonic, type, chords) using Tonal.js.
  * @param keyName - Key signature (e.g., "C", "Gm", "F#maj", "Dbmin").
- * @returns Tonal key object or null if key is invalid.
+ * @returns Tonal key object. Throws error if key is invalid.
  */
 function getKeyDetails(
   keyName: string,
-): ReturnType<typeof Tonal.Key.majorKey> | ReturnType<typeof Tonal.Key.minorKey> | null {
-  let keyDetails: ReturnType<typeof Tonal.Key.majorKey> | ReturnType<typeof Tonal.Key.minorKey> | null | undefined = Tonal.Key.majorKey(keyName);
+): NonNullable<ReturnType<typeof Tonal.Key.majorKey> | ReturnType<typeof Tonal.Key.minorKey>> {
+  let keyDetails: ReturnType<typeof Tonal.Key.majorKey> | ReturnType<typeof Tonal.Key.minorKey> | undefined = Tonal.Key.majorKey(keyName);
   if (!keyDetails || !keyDetails.tonic) {
     keyDetails = Tonal.Key.minorKey(keyName);
   }
@@ -547,20 +547,15 @@ export function getChordInfoFromRoman(
   // 1. Parse Roman Numeral (handles inversions)
   // parseRomanNumeral will throw MusicTheoryError if parsing fails.
   const parsedRoman = parseRomanNumeral(fullRomanWithInversion);
-  // If parseRomanNumeral were to return null (legacy or future change), handle it:
-  if (!parsedRoman) {
-    throw new MusicTheoryError(`Failed to parse Roman numeral "${fullRomanWithInversion}".`);
-  }
+  // No null check needed here as parseRomanNumeral now guarantees a return or throws.
   const { baseRoman, bassInterval } = parsedRoman;
 
   // 2. Get Key Details
   // getKeyDetails will throw InvalidInputError if key is not recognized.
   const keyDetails = getKeyDetails(keyNameInput);
-  if (!keyDetails) { // Should be handled by getKeyDetails throwing an error, but this satisfies TS for the declared return type
-     throw new InvalidInputError(`Failed to get key details for "${keyNameInput}" with Roman "${fullRomanWithInversion}".`);
-  }
-  const keyType = keyDetails.type as 'major' | 'minor'; // Safe if getKeyDetails throws on null
-  const keyTonic = keyDetails.tonic; // Safe
+  // No null check needed here as getKeyDetails now guarantees a return or throws.
+  const keyType = keyDetails.type as 'major' | 'minor';
+  const keyTonic = keyDetails.tonic;
 
   // 3. Determine Scale Degree Index
   const baseRomanMatch = baseRoman.match(/([ivxlcIVXLC]+)/i);

@@ -48,16 +48,6 @@ export default async function generateMA(
     let geminiResponseText: string | undefined;
     try {
       const genAI = getGenAI(); // Initialize or get existing instance
-    // const model = genAI.getGenerativeModel({ // Old way, incorrect for v0.13.0
-    //   model: "gemini-1.5-flash-preview-0514", // Ensure this model name is current
-    //   // GenerationConfig and SafetySettings can be added here if needed
-    //   // generationConfig: { temperature: 0.7 },
-    //   // safetySettings: [
-    //   //   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-    //   //   // Add other categories as needed
-    //   // ]
-    // });
-    // const result = await model.generateContent({ // Old way
     const result = await genAI.models.generateContent({ // Correct for v0.13.0
       model: "gemini-1.5-flash-preview-0514", // Model specified here
       contents: [{role: "user", parts: [{
@@ -112,7 +102,6 @@ The accompaniment MUST be an array of note objects. Each object must have a "not
 Example: [{"note": "C3", "rhythm": 4}, {"note": "E3", "rhythm": 4}, {"note": "G3", "rhythm": 4}, ...]
 Return ONLY the JSON array of accompaniment note objects. Do not include any explanatory text or apologies if the task is challenging. Focus on generating the highest quality musical output based on these detailed instructions.`}]}],
     });
-    // const response = result.response; // Incorrect: result is the response object itself
     geminiResponseText = result.text; // Access text property directly from the result object
 
   } catch (error: unknown) { // Catch unknown to inspect it
