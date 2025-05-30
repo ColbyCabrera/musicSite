@@ -157,7 +157,7 @@ function parseRomanNumeral(romanWithInversion: string): {
 function getKeyDetails(
   keyName: string,
 ): ReturnType<typeof Tonal.Key.majorKey> | ReturnType<typeof Tonal.Key.minorKey> | null {
-  let keyDetails = Tonal.Key.majorKey(keyName);
+  let keyDetails: ReturnType<typeof Tonal.Key.majorKey> | ReturnType<typeof Tonal.Key.minorKey> | null | undefined = Tonal.Key.majorKey(keyName);
   if (!keyDetails || !keyDetails.tonic) {
     keyDetails = Tonal.Key.minorKey(keyName);
   }
@@ -548,17 +548,17 @@ export function getChordInfoFromRoman(
   // parseRomanNumeral will throw MusicTheoryError if parsing fails.
   const parsedRoman = parseRomanNumeral(fullRomanWithInversion);
   // If parseRomanNumeral were to return null (legacy or future change), handle it:
-  // if (!parsedRoman) {
-  //   throw new MusicTheoryError(`Failed to parse Roman numeral "${fullRomanWithInversion}".`);
-  // }
+  if (!parsedRoman) {
+    throw new MusicTheoryError(`Failed to parse Roman numeral "${fullRomanWithInversion}".`);
+  }
   const { baseRoman, bassInterval } = parsedRoman;
 
   // 2. Get Key Details
   // getKeyDetails will throw InvalidInputError if key is not recognized.
   const keyDetails = getKeyDetails(keyNameInput);
-  // if (!keyDetails) { // Should be handled by getKeyDetails throwing an error
-  //    throw new InvalidInputError(`Failed to get key details for "${keyNameInput}" with Roman "${fullRomanWithInversion}".`);
-  // }
+  if (!keyDetails) { // Should be handled by getKeyDetails throwing an error, but this satisfies TS for the declared return type
+     throw new InvalidInputError(`Failed to get key details for "${keyNameInput}" with Roman "${fullRomanWithInversion}".`);
+  }
   const keyType = keyDetails.type as 'major' | 'minor'; // Safe if getKeyDetails throws on null
   const keyTonic = keyDetails.tonic; // Safe
 
@@ -586,9 +586,9 @@ export function getChordInfoFromRoman(
     keyDetails, // keyDetails is non-nullable here due to earlier check/throw
     keyNameInput,
   );
-  // if (!currentChordSymbol) { // Should be handled by getInitialDiatonicChordSymbol throwing
-  //   throw new MusicTheoryError(`Failed to get initial diatonic chord for "${baseRomanUpper}" in key "${keyNameInput}".`);
-  // }
+  if (!currentChordSymbol) { // Should be handled by getInitialDiatonicChordSymbol throwing
+    throw new MusicTheoryError(`Failed to get initial diatonic chord for "${baseRomanUpper}" in key "${keyNameInput}".`);
+  }
 
   // 5. Apply Explicit Chord Modifications (Quality, 7ths)
   // applyChordModifications can throw MusicTheoryError if initial symbol is bad.

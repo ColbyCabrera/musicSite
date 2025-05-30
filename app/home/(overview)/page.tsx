@@ -187,6 +187,7 @@ export default function Page() {
             melody: { min: 'F3', max: 'F6' },
             accompaniment: { min: 'B1', max: 'G4' },
           },
+          true, // enableAiAccompaniment
         );
 
         setGeneratedMusicXml(

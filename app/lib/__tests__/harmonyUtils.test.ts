@@ -1101,7 +1101,6 @@ describe('getChordInfoFromRoman', () => {
   });
 
   // Test "V65/IV" from prompt
-  });
 
   // The following tests for combined figured bass and secondary dominant slashes (e.g., "V65/IV")
   // are removed because the current `parseRomanNumeral` prioritizes slash notation if present,
