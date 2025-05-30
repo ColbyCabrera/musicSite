@@ -128,7 +128,7 @@ export function generateChordProgression(
          if (nextChord === undefined) { // Fallback if loop failed
             // This indicates a potential issue in the selection logic if no chord could be chosen after MAX_ATTEMPTS.
             // It's not necessarily a critical error that should stop all generation, but a warning is good.
-            console.warn(`generateChordProgression: Could not determine next chord after ${MAX_ATTEMPTS_PER_CHORD} attempts for measure ${i + 1} in key "${key}". Choosing random allowed chord.`);
+            console.warn(`[WARN] generateChordProgression: Could not determine next chord after ${MAX_ATTEMPTS_PER_CHORD} attempts for measure ${i + 1} in key "${key}". Choosing random allowed chord.`);
             nextChord = allowedChords[Math.floor(Math.random() * allowedChords.length)];
             if(!nextChord) { // Should be impossible if allowedChords has tonicRoman
                 throw new GenerationError(`generateChordProgression: Allowed chords list became empty unexpectedly for key "${key}" at measure ${i+1}.`);
@@ -161,6 +161,6 @@ export function generateChordProgression(
          progression[0] = tonicRoman;
      }
 
-    console.log(`Generated Progression (${key}, complexity ${harmonicComplexity}): ${progression.join(' | ')}`);
+    console.info(`[INFO] Generated Progression (${key}, complexity ${harmonicComplexity}): ${progression.join(' | ')}`);
     return progression;
 }

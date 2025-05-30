@@ -1,6 +1,7 @@
 // src/voicingMelodyAccomp.ts
 import { VOICE_RANGES, MELODY_ACCOMPANIMENT_SPACING_LIMIT } from './constants';
 import { findClosestNote } from './voicingUtils';
+import { GenerationError } from './errors'; // Added import
 // import { midiToNoteName } from './harmonyUtils'; // Not used directly, only for console.warn/error
 
 /**
@@ -61,10 +62,9 @@ export function generateAccompanimentVoicing(
         .sort((a, b) => a - b);
 
     if (availableNotes.length < numVoices) {
-        console.warn(`Accompaniment: Not enough notes (${availableNotes.length}) in pool for ${numVoices}-note chord. Using available.`);
+        console.warn(`[WARN] Accompaniment: Not enough notes (${availableNotes.length}) in pool for ${numVoices}-note chord. Using available.`);
         if (availableNotes.length === 0) {
-            console.error('Accompaniment: No available notes found at all.');
-            return Array(numVoices).fill(null);
+            throw new GenerationError('Accompaniment: No available notes found in pool to generate any accompaniment.');
         }
         numVoices = availableNotes.length;
     }
@@ -86,7 +86,7 @@ export function generateAccompanimentVoicing(
         bassCandidates = allRootOptions;
     } else {
         bassCandidates = currentAvailableNotes; // Use any note if root unavailable
-        console.warn(`Accompaniment: Chord root PC ${chordRootPc} not found in available notes. Choosing lowest.`);
+        console.warn(`[WARN] Accompaniment: Chord root PC ${chordRootPc} not found in available notes. Choosing lowest.`);
     }
 
     lowestNote = findClosestNote(
@@ -98,7 +98,7 @@ export function generateAccompanimentVoicing(
     );
 
     if (lowestNote === null) {
-        console.warn('Accompaniment: Could not assign bass note. Using fallback.');
+        console.warn('[WARN] Accompaniment: Could not assign bass note. Using fallback.');
         return Array(numVoices).fill(null);
     }
 
