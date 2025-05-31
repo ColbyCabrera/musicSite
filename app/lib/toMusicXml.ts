@@ -35,9 +35,11 @@ interface PitchInfo {
   step: string;
   /**
    * The alteration of the note:
+   * - -2: double flat
    * - -1: flat
-   * -  0: natural (often omitted in MusicXML if no accidental is displayed)
+   * -  0: natural (often omitted in MusicXML if no accidental is displayed, e.g. C in C major)
    * -  1: sharp
+   * -  2: double sharp
    */
   alter?: number;
   /** The octave number as a string (e.g., "4" for the octave containing middle C). */
@@ -78,7 +80,9 @@ const rhythmMap = new Map<number, RhythmInfo>([
 ]);
 
 interface ScoreData {
+  /** Array of NoteObject representing the melody line. */
   melody: NoteObject[];
+  /** Array of NoteObject representing the accompaniment. */
   accompaniment: NoteObject[];
 }
 
@@ -169,7 +173,24 @@ function buildPartMeasures(
           pitch.ele('octave').txt(pitchInfo.octave).up();
           pitch.up();
           if (pitchInfo.alter !== undefined && pitchInfo.alter !== 0) {
-             noteElement.ele('accidental').txt(pitchInfo.alter > 0 ? 'sharp' : 'flat').up();
+            let accidentalText = '';
+            switch (pitchInfo.alter) {
+              case 1:
+                accidentalText = 'sharp';
+                break;
+              case -1:
+                accidentalText = 'flat';
+                break;
+              case 2:
+                accidentalText = 'double-sharp';
+                break;
+              case -2:
+                accidentalText = 'flat-flat';
+                break;
+            }
+            if (accidentalText) {
+              noteElement.ele('accidental').txt(accidentalText).up();
+            }
           }
         } else {
           noteElement.ele('rest').up();
@@ -193,10 +214,6 @@ function buildPartMeasures(
     if (currentMeasureTicks < pieceAttributes.measureDurationTicks) {
       const remainingTicks = pieceAttributes.measureDurationTicks - currentMeasureTicks;
       if (remainingTicks > 0) {
-        if (partInfo.id === 'P1' && measureNumber === 2 && pieceAttributes.timeBeats === 3) {
-            // console.log(`DEBUG ${partInfo.id} M${measureNumber}: currentMeasureTicks=${currentMeasureTicks}, measureDurationTicks=${pieceAttributes.measureDurationTicks}, remainingTicks=${remainingTicks}`);
-        }
-
         const restElement = measureElement.ele('note');
         restElement.ele('rest').up();
         restElement.ele('duration').txt(`${remainingTicks}`).up();

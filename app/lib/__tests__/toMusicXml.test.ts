@@ -46,6 +46,16 @@ describe('scoreToMusicXML', () => {
     ],
   };
 
+  const doubleAccidentalData: ScoreData = {
+    melody: [
+      { note: 'G##4', rhythm: 4 }, // G double-sharp
+      { note: 'Abb4', rhythm: 4 }, // A double-flat
+    ],
+    accompaniment: [
+      { note: 'rest', rhythm: 2 }, // Fill a measure in 4/4
+    ],
+  };
+
 
   // --- Test Case 1: Simple Score ---
   describe('Simple Score (C Major, 4/4)', () => {
@@ -56,7 +66,6 @@ describe('scoreToMusicXML', () => {
 
     beforeAll(() => {
       xmlOutput = scoreToMusicXML(simpleScoreData, key, time, title);
-      // console.log("Simple XML Output for well-formedness check:\n", xmlOutput);
     });
 
     test('should produce well-formed XML (basic check)', () => {
@@ -179,6 +188,36 @@ describe('scoreToMusicXML', () => {
         const accompPart = xmlOutput.substring(xmlOutput.indexOf('<part id="P2">'), xmlOutput.indexOf('</part>', xmlOutput.indexOf('<part id="P2">')));
         const measure2 = accompPart.substring(accompPart.indexOf('<measure number="2">'), accompPart.indexOf('</measure>', accompPart.indexOf('<measure number="2">')) + '</measure>'.length);
         expect(measure2).toMatch(/<note>\s*<rest\/>\s*<duration>4<\/duration>\s*<voice>1<\/voice>\s*<staff>1<\/staff>\s*<\/note>\s*<\/measure>/);
+    });
+  });
+
+  // --- Test Case 3: Double Accidentals ---
+  describe('Double Accidentals Test (C Major, 4/4)', () => {
+    const key = 'C'; // Key doesn't matter as much as explicit accidentals
+    const time = '4/4';
+    const title = 'Double Accidental Test';
+    let xmlOutput: string;
+
+    beforeAll(() => {
+      xmlOutput = scoreToMusicXML(doubleAccidentalData, key, time, title);
+    });
+
+    test('should produce well-formed XML (basic check)', () => {
+      expect(isWellFormedXML(xmlOutput)).toBe(true);
+    });
+
+    test('Melody: should contain G##4 with double-sharp accidental and alter=2', () => {
+      // G##4, rhythm 4 (quarter) -> duration 4
+      // Expect step G, alter 2, octave 4, accidental double-sharp
+      // Order: pitch, accidental, duration, type, voice, staff
+      expect(xmlOutput).toMatch(/<pitch>\s*<step>G<\/step>\s*<alter>2<\/alter>\s*<octave>4<\/octave>\s*<\/pitch>\s*<accidental>double-sharp<\/accidental>\s*<duration>4<\/duration>/);
+    });
+
+    test('Melody: should contain Abb4 with flat-flat accidental and alter=-2', () => {
+      // Abb4, rhythm 4 (quarter) -> duration 4
+      // Expect step A, alter -2, octave 4, accidental flat-flat
+      // Order: pitch, accidental, duration, type, voice, staff
+      expect(xmlOutput).toMatch(/<pitch>\s*<step>A<\/step>\s*<alter>-2<\/alter>\s*<octave>4<\/octave>\s*<\/pitch>\s*<accidental>flat-flat<\/accidental>\s*<duration>4<\/duration>/);
     });
   });
 });
