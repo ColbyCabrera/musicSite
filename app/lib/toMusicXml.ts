@@ -1,13 +1,13 @@
 // src/toMusicXml.ts
-
-// TODO: Consider moving these interfaces to types.ts if they are used externally or for broader consistency.
+import { XMLBuilder, create } from 'xmlbuilder2';
+import * as Tonal from 'tonal';
 
 /**
  * Represents a musical note with its pitch and rhythm.
  * Used as input for generating MusicXML.
  */
 interface NoteObject {
-  /** The scientific pitch notation of the note (e.g., "C4", "F#5", "Bb3"). Optional. */
+  /** The scientific pitch notation of the note (e.g., "C4", "F#5", "Bb3", or "rest"). */
   note?: string;
   /**
    * A numerical representation of the note's rhythm/duration.
@@ -25,8 +25,6 @@ interface RhythmInfo {
   type: string;
   /** The duration of the note in MusicXML divisions (ticks). */
   duration: number;
-  /** The duration of the note in terms of beats within the measure (e.g., 1.0 for a quarter note in 4/4 time). */
-  beats: number;
 }
 
 /**
@@ -39,274 +37,293 @@ interface PitchInfo {
    * The alteration of the note:
    * - -2: double flat
    * - -1: flat
-   * -  0: natural (often omitted in MusicXML if no accidental is displayed)
+   * -  0: natural (often omitted in MusicXML if no accidental is displayed, e.g. C in C major)
    * -  1: sharp
    * -  2: double sharp
    */
-  alter: number;
+  alter?: number;
   /** The octave number as a string (e.g., "4" for the octave containing middle C). */
   octave: string;
 }
 
 /**
- * Parses a note string in scientific pitch notation (e.g., "C#4", "Bb3")
+ * Parses a note string in scientific pitch notation (e.g., "C#4", "Bb3", or "rest")
  * into its fundamental components: step (letter), alteration (accidental), and octave.
+ * If "rest" is provided, it returns a structure representing a rest.
  *
  * @param {string} noteStr - The note string to parse.
- * @returns {PitchInfo | null} A `PitchInfo` object containing the parsed components,
- *                             or `null` if the note string is invalid or cannot be parsed.
+ * @returns {PitchInfo} A `PitchInfo` object. For rests or unparseable notes,
+ *                      it returns a default structure (e.g., empty step/octave).
  */
-function parseNote(noteStr: string): PitchInfo | null {
-  // Regex to capture: 1=letter, 2=accidental (optional), 3=octave
-  const match = noteStr.match(/([A-Ga-g])([#b]?)(\d+)/);
-  if (match) {
-    const step = match[1].toUpperCase();
-    const alterStr = match[2];
-    const octave = match[3];
-    let alter = 0;
-    if (alterStr === '#') {
-      alter = 1;
-    } else if (alterStr === 'b') {
-      alter = -1;
-    }
-    return { step, alter, octave };
+function getNoteDetails(noteStr: string): PitchInfo {
+  if (noteStr.toLowerCase() === 'rest') {
+    // Return a representation for a rest.
+    return { step: '', alter: 0, octave: '' };
   }
-  console.warn(`Could not parse note string: ${noteStr}`);
-  return null; // Return null if parsing fails
+
+  const noteDetails = Tonal.Note.get(noteStr);
+
+  // Check if Tonal.js could parse the note into meaningful components.
+  if (noteDetails.empty || !noteDetails.letter || typeof noteDetails.oct !== 'number') {
+    console.warn(`Could not parse pitched note string with Tonal: ${noteStr}`);
+    return { step: '', alter: 0, octave: '' }; // Default for unparseable pitched notes
+  }
+
+  const step = noteDetails.letter;
+  // noteDetails.alt provides the numerical alteration: 1 for #, -1 for b, 2 for ##, -2 for bb
+  // It can be undefined for notes without accidentals (like C in C major scale context from Tonal functions,
+  // but Tonal.Note.get('C4').alt is undefined, which we want as 0).
+  const alter = noteDetails.alt !== undefined ? noteDetails.alt : 0;
+  const octave = String(noteDetails.oct);
+
+  return { step, alter, octave };
 }
 
-// --- Shared Constants and Mappings for MusicXML Generation ---
+const RHYTHM_MAP_DIVISIONS: number = 4;
 
-/** Default number of divisions per quarter note in MusicXML. Higher values allow for finer rhythmic precision. */
-const divisions: number = 4;
-/** Default number of beats per measure, assuming 4/4 time for calculations if not otherwise specified. */
-const beatsPerMeasure: number = 4.0;
-/** Default beat type (denominator of time signature), assuming 4/4 time. */
-const beatType: number = 4;
-/** Small tolerance value used for floating-point comparisons, e.g., when checking if a measure is full. */
-const tolerance: number = 1e-6;
-
-/**
- * Maps numerical rhythm representations (e.g., 4 for quarter) to MusicXML note types,
- * durations in divisions, and duration in beats.
- * This map assumes a fixed value for `divisions` (currently 4). If `divisions` changes,
- * the `duration` values here must be updated accordingly.
- * @readonly
- */
 const rhythmMap = new Map<number, RhythmInfo>([
-  // Assuming divisions = 4 (meaning quarter note = 4 divisions)
-  [1, { type: 'whole', duration: divisions * 4, beats: 4.0 }],    // Whole note = 16 divisions
-  [2, { type: 'half', duration: divisions * 2, beats: 2.0 }],     // Half note = 8 divisions
-  [4, { type: 'quarter', duration: divisions * 1, beats: 1.0 }],   // Quarter note = 4 divisions
-  [8, { type: 'eighth', duration: divisions / 2, beats: 0.5 }],    // Eighth note = 2 divisions
-  [16, { type: '16th', duration: divisions / 4, beats: 0.25 }],   // Sixteenth note = 1 division
-  // TODO: Consider adding 32nd notes (divisions / 8, beats: 0.125) if needed
+  [1, { type: 'whole', duration: RHYTHM_MAP_DIVISIONS * 4 }],
+  [2, { type: 'half', duration: RHYTHM_MAP_DIVISIONS * 2 }],
+  [4, { type: 'quarter', duration: RHYTHM_MAP_DIVISIONS * 1 }],
+  [8, { type: 'eighth', duration: RHYTHM_MAP_DIVISIONS / 2 }],
+  [16, { type: '16th', duration: RHYTHM_MAP_DIVISIONS / 4 }],
+  [32, { type: '32nd', duration: RHYTHM_MAP_DIVISIONS / 8 }],
 ]);
 
-/**
- * Defines the structure for the input score data, containing separate arrays
- * of `NoteObject` for melody and accompaniment parts.
- */
 interface ScoreData {
-  /** An array of `NoteObject` representing the melody line. */
+  /** Array of NoteObject representing the melody line. */
   melody: NoteObject[];
-  /** An array of `NoteObject` representing the accompaniment part. */
+  /** Array of NoteObject representing the accompaniment. */
   accompaniment: NoteObject[];
 }
 
-/**
- * Generates the MusicXML string for a single musical part (e.g., melody or accompaniment).
- * This includes measure definitions, attributes (clef, time signature, key signature for the first measure),
- * and note/rest elements.
- *
- * @param {NoteObject[]} notes - An array of `NoteObject` instances representing the musical content of this part.
- * @param {string} partId - A unique identifier for this part (e.g., "P1", "P2"), used in the `<part>` element's `id` attribute.
- * @param {('G' | 'F')} clefSign - The clef sign to use for this part ('G' for treble, 'F' for bass).
- * @param {number} clefLine - The staff line number on which the clef is centered (e.g., 2 for G-clef, 4 for F-clef).
- * @returns {string} A string containing the complete MusicXML for the `<part>` element and its contents.
- */
-function generatePartXML(
-  notes: NoteObject[],
-  partId: string,
-  clefSign: 'G' | 'F',
-  clefLine: number,
-): string {
-  let partXml = `  <part id="${partId}">\n`; // Start of the <part> element
-  let measureNumber: number = 1; // MusicXML measures are typically 1-indexed
-  let currentBeatInMeasure: number = 0.0;
-  let isFirstMeasure: boolean = true;
-
-  // Function to start a new measure *within this part*
-  const startNewMeasure = () => {
-    partXml += `    <measure number="${measureNumber}">\n`;
-    if (isFirstMeasure) {
-      partXml += `      <attributes>\n`;
-      partXml += `        <divisions>${divisions}</divisions>\n`;
-      partXml += `        <key>\n`;
-      partXml += `          <fifths>0</fifths>\n`; // C Major / A Minor
-      partXml += `          <mode>major</mode>\n`;
-      partXml += `        </key>\n`;
-      partXml += `        <time>\n`;
-      partXml += `          <beats>${Math.floor(beatsPerMeasure)}</beats>\n`;
-      partXml += `          <beat-type>${beatType}</beat-type>\n`;
-      partXml += `        </time>\n`;
-      partXml += `        <clef>\n`;
-      partXml += `          <sign>${clefSign}</sign>\n`;
-      partXml += `          <line>${clefLine}</line>\n`;
-      partXml += `        </clef>\n`;
-      partXml += `      </attributes>\n`;
-      isFirstMeasure = false;
-    }
-  };
-
-  // Start the first measure for this part
-  startNewMeasure();
-
-  // Process each note in this part's array
-  for (const noteObj of notes) {
-    const noteStr = noteObj.note;
-    const rhythmVal = noteObj.rhythm;
-
-    // --- Validate data ---
-    if (!noteStr || typeof rhythmVal !== 'number') {
-      console.warn(
-        `Skipping invalid note object in part ${partId}: ${JSON.stringify(noteObj)}`,
-      );
-      continue;
-    }
-
-    const rhythmInfo = rhythmMap.get(rhythmVal);
-    if (!rhythmInfo || !Number.isInteger(rhythmInfo.duration)) {
-      console.warn(
-        `Skipping note with unrecognized/invalid rhythm ${rhythmVal} in part ${partId}: ${JSON.stringify(noteObj)}`,
-      );
-      continue;
-    }
-
-    const pitchInfo = parseNote(noteStr);
-    if (!pitchInfo) {
-      console.warn(
-        `Skipping note with unparseable pitch ${noteStr} in part ${partId}: ${JSON.stringify(noteObj)}`,
-      );
-      continue;
-    }
-
-    // --- Check if a new measure is needed ---
-    // Important: This calculation is independent for each part
-    if (currentBeatInMeasure + rhythmInfo.beats > beatsPerMeasure + tolerance) {
-      // Potentially add rest to fill measure if needed - complex, skipping for now
-      console.warn(
-        `Note ${noteStr} (${rhythmInfo.type}) in part ${partId} exceeds measure ${measureNumber} bounds. Starting new measure.`,
-      );
-      partXml += `    </measure>\n`; // Close current measure
-      measureNumber++;
-      currentBeatInMeasure = 0.0;
-      startNewMeasure();
-    }
-
-    // --- Add the note element ---
-    partXml += `      <note>\n`;
-    partXml += `        <pitch>\n`;
-    partXml += `          <step>${pitchInfo.step}</step>\n`;
-    if (pitchInfo.alter !== 0) {
-      partXml += `          <alter>${pitchInfo.alter}</alter>\n`;
-    }
-    partXml += `          <octave>${pitchInfo.octave}</octave>\n`;
-    partXml += `        </pitch>\n`;
-    partXml += `        <duration>${rhythmInfo.duration}</duration>\n`;
-    partXml += `        <type>${rhythmInfo.type}</type>\n`;
-    // Basic accidental display
-    if (pitchInfo.alter !== 0) {
-      const accType = pitchInfo.alter > 0 ? 'sharp' : 'flat';
-      partXml += `        <accidental>${accType}</accidental>\n`;
-    }
-    partXml += `      </note>\n`;
-
-    // Update beat count in the current measure *for this part*
-    currentBeatInMeasure += rhythmInfo.beats;
-
-    // Handle measure completion
-    if (Math.abs(currentBeatInMeasure - beatsPerMeasure) < tolerance) {
-      partXml += `    </measure>\n`; // Close current measure
-      measureNumber++;
-      currentBeatInMeasure = 0.0;
-      // Check if it's the last note before starting a new measure tag
-      if (noteObj !== notes[notes.length - 1]) {
-        startNewMeasure(); // Start next measure only if more notes exist
-      }
-    }
-  } // End of loop through notes for this part
-
-  // --- Close final measure if necessary ---
-  if (!partXml.trim().endsWith('</measure>')) {
-    // Check if the current measure actually has content before closing it
-    // A simple check: Does the string contain <note> after the last <measure number=...> ?
-    const lastMeasureStartIndex = partXml.lastIndexOf(
-      `<measure number="${measureNumber}">`,
-    );
-    if (
-      lastMeasureStartIndex > -1 &&
-      partXml.indexOf('<note>', lastMeasureStartIndex) > -1
-    ) {
-      partXml += `    </measure>\n`;
-    } else if (lastMeasureStartIndex > -1 && isFirstMeasure) {
-      // If it was the *very first* measure and it's empty, keep it (it has attributes)
-      // but maybe add a full measure rest? For simplicity, just close it.
-      partXml += `    </measure>\n`;
-    } else if (lastMeasureStartIndex > -1) {
-      // If an empty measure was started but it's not the first one, potentially remove it?
-      // Safest for now is to just close it.
-      partXml += `    </measure>\n`;
-    }
-  }
-
-  partXml += `  </part>\n`; // Close the part
-  return partXml;
+interface PieceAttributes {
+  divisions: number;
+  keyFifths: number;
+  keyMode: string;
+  timeBeats: number;
+  timeBeatType: number;
+  measureDurationTicks: number;
 }
 
-/**
- * Converts a score object containing melody and accompaniment arrays
- * into a MusicXML string with two parts.
- *
- * @param scoreData An object with 'melody' and 'accompaniment' NoteObject arrays.
- * @param title The title to embed in the MusicXML score. Defaults to "Generated Score".
- * @returns A string containing the MusicXML representation of the score.
- */
+interface PartInfo {
+  id: string;
+  name: string;
+  clefSign: 'G' | 'F' | 'C';
+  clefLine: number;
+}
+
+function buildPartMeasures(
+  partBuilder: XMLBuilder,
+  notes: NoteObject[],
+  partInfo: PartInfo,
+  pieceAttributes: PieceAttributes,
+) {
+  let currentMeasureTicks = 0;
+  let measureNumber = 1;
+  let noteBuffer = [...notes];
+
+  while (noteBuffer.length > 0 || (measureNumber === 1 && currentMeasureTicks === 0) || (currentMeasureTicks > 0 && currentMeasureTicks < pieceAttributes.measureDurationTicks)) {
+    const measureElement = partBuilder.ele('measure', { number: `${measureNumber}` });
+
+    if (measureNumber === 1) {
+      const attributes = measureElement.ele('attributes');
+      attributes.ele('divisions').txt(`${pieceAttributes.divisions}`).up();
+      const key = attributes.ele('key');
+      key.ele('fifths').txt(`${pieceAttributes.keyFifths}`).up();
+      key.ele('mode').txt(pieceAttributes.keyMode).up();
+      key.up();
+      const time = attributes.ele('time');
+      time.ele('beats').txt(`${pieceAttributes.timeBeats}`).up();
+      time.ele('beat-type').txt(`${pieceAttributes.timeBeatType}`).up();
+      time.up();
+      attributes.ele('staves').txt('1').up();
+      const clef = attributes.ele('clef');
+      clef.ele('sign').txt(partInfo.clefSign).up();
+      clef.ele('line').txt(`${partInfo.clefLine}`).up();
+      clef.up();
+      attributes.up();
+    }
+
+    let measureFilledInLoop = false;
+    while (currentMeasureTicks < pieceAttributes.measureDurationTicks && noteBuffer.length > 0) {
+      measureFilledInLoop = true;
+      const noteObj = noteBuffer[0];
+
+      if (!noteObj.rhythm) {
+        console.warn(`Skipping note object with no rhythm: ${JSON.stringify(noteObj)}`);
+        noteBuffer.shift();
+        continue;
+      }
+      const rhythmInfo = rhythmMap.get(noteObj.rhythm);
+      if (!rhythmInfo) {
+        console.warn(`Skipping note with unrecognized rhythm: ${noteObj.rhythm}`);
+        noteBuffer.shift();
+        continue;
+      }
+
+      if (currentMeasureTicks + rhythmInfo.duration > pieceAttributes.measureDurationTicks) {
+        break;
+      }
+
+      noteBuffer.shift();
+
+      const noteElement = measureElement.ele('note');
+      const isRest = noteObj.note?.toLowerCase() === 'rest';
+
+      if (isRest) {
+        noteElement.ele('rest').up();
+      } else if (noteObj.note) {
+        const pitchInfo = getNoteDetails(noteObj.note); // Use the new function name
+        // Since getNoteDetails now always returns a PitchInfo (even for rests/unparseable),
+        // we check if it's a "real" note by seeing if step is populated.
+        if (pitchInfo.step) {
+          const pitch = noteElement.ele('pitch');
+          pitch.ele('step').txt(pitchInfo.step).up();
+          if (pitchInfo.alter !== undefined && pitchInfo.alter !== 0) { // Only add alter if not 0
+            pitch.ele('alter').txt(`${pitchInfo.alter}`).up();
+          }
+          pitch.ele('octave').txt(pitchInfo.octave).up();
+          pitch.up();
+          // Accidental display logic
+          if (pitchInfo.alter !== undefined && pitchInfo.alter !== 0) {
+            let accidentalText = '';
+            switch (pitchInfo.alter) {
+              case 1:
+                accidentalText = 'sharp';
+                break;
+              case -1:
+                accidentalText = 'flat';
+                break;
+              case 2:
+                accidentalText = 'double-sharp';
+                break;
+              case -2:
+                accidentalText = 'flat-flat';
+                break;
+            }
+            if (accidentalText) {
+              noteElement.ele('accidental').txt(accidentalText).up();
+            }
+          }
+        } else {
+          noteElement.ele('rest').up();
+          console.warn(`Unparseable note string '${noteObj.note}', adding rest instead.`);
+        }
+      } else {
+        noteElement.ele('rest').up();
+      }
+
+      noteElement.ele('duration').txt(`${rhythmInfo.duration}`).up();
+      if (!isRest && rhythmInfo.type) {
+          noteElement.ele('type').txt(rhythmInfo.type).up();
+      }
+      noteElement.ele('voice').txt('1').up();
+      noteElement.ele('staff').txt('1').up();
+      noteElement.up();
+
+      currentMeasureTicks += rhythmInfo.duration;
+    }
+
+    if (currentMeasureTicks < pieceAttributes.measureDurationTicks) {
+      const remainingTicks = pieceAttributes.measureDurationTicks - currentMeasureTicks;
+      if (remainingTicks > 0) {
+        const restElement = measureElement.ele('note');
+        restElement.ele('rest').up();
+        restElement.ele('duration').txt(`${remainingTicks}`).up();
+        restElement.ele('voice').txt('1').up();
+        restElement.ele('staff').txt('1').up();
+        restElement.up();
+        currentMeasureTicks += remainingTicks;
+        measureFilledInLoop = true;
+      }
+    }
+
+    measureElement.up();
+
+    if (currentMeasureTicks >= pieceAttributes.measureDurationTicks) {
+        currentMeasureTicks = 0;
+        measureNumber++;
+    } else if (noteBuffer.length === 0 && !measureFilledInLoop && measureNumber > 1) {
+        break;
+    }
+
+    if (measureNumber > 1000) {
+        console.error("Measure count exceeded 1000. Aborting.");
+        break;
+    }
+    if (noteBuffer.length === 0 && currentMeasureTicks === 0) {
+        break;
+    }
+  }
+}
+
 export function scoreToMusicXML(
   scoreData: ScoreData,
+  keySignature: string,
+  timeSignature: string,
   title: string = 'Generated Score',
 ): string {
-  // --- Start building the MusicXML string ---
-  let xml = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
-<score-partwise version="4.0">
-  <work>
-    <work-title>${title}</work-title>
-  </work>
-  <part-list>
-    <score-part id="P1">
-      <part-name>Melody</part-name>
-      </score-part>
-    <score-part id="P2">
-      <part-name>Accompaniment</part-name>
-      </score-part>
-  </part-list>
-`; // End of part-list
+  const divisions = RHYTHM_MAP_DIVISIONS;
 
-  // --- Generate XML for each part ---
-  const melodyPartXML = generatePartXML(scoreData.melody, 'P1', 'G', 2); // Treble Clef for Melody
-  const accompanimentPartXML = generatePartXML(
-    scoreData.accompaniment,
-    'P2',
-    'F',
-    4,
-  ); // Bass Clef for Accompaniment
+  const keyDetails = Tonal.Key.majorKey(keySignature) ?? Tonal.Key.minorKey(keySignature);
+  let keyFifths = 0;
+  let keyMode = 'major';
+  if (keyDetails && typeof keyDetails.alteration === 'number' && keyDetails.type) {
+    keyFifths = keyDetails.alteration;
+    keyMode = keyDetails.type;
+  } else {
+    console.warn(`Could not determine key signature details for "${keySignature}". Defaulting to C major.`);
+  }
 
-  xml += melodyPartXML;
-  xml += accompanimentPartXML;
+  const timeSigMatch = timeSignature.match(/^(\d+)\/(\d+)$/);
+  let timeBeats = 4;
+  let timeBeatType = 4;
+  if (timeSigMatch) {
+    timeBeats = parseInt(timeSigMatch[1], 10);
+    timeBeatType = parseInt(timeSigMatch[2], 10);
+  } else {
+    console.warn(`Invalid time signature format "${timeSignature}". Defaulting to 4/4.`);
+  }
+  const ticksPerBeat = divisions * (4 / timeBeatType);
+  const measureDurationTicks = timeBeats * ticksPerBeat;
 
-  // --- Close final element ---
-  xml += `</score-partwise>\n`;
+  const pieceAttributes: PieceAttributes = {
+    divisions,
+    keyFifths,
+    keyMode,
+    timeBeats,
+    timeBeatType,
+    measureDurationTicks,
+  };
 
-  return xml;
+  const root = create({ version: '1.0', encoding: 'UTF-8', standalone: false }) // Added standalone: false
+    .dtd({
+      pubID: '-//Recordare//DTD MusicXML 4.0 Partwise//EN',
+      sysID: 'http://www.musicxml.org/dtds/partwise.dtd',
+    })
+    .ele('score-partwise', { version: '4.0' });
+
+  root.ele('work').ele('work-title').txt(title).up().up();
+  const identification = root.ele('identification');
+  identification.ele('software').txt('AI Music Generation Tool').up();
+  identification.ele('encoding-date').txt(new Date().toISOString().split('T')[0]).up();
+  identification.up();
+
+  const partList = root.ele('part-list');
+  partList.ele('score-part', { id: 'P1' }).ele('part-name').txt('Melody').up().up();
+  partList.ele('score-part', { id: 'P2' }).ele('part-name').txt('Accompaniment').up().up();
+  partList.up();
+
+  const melodyPartBuilder = root.ele('part', { id: 'P1' });
+  const melodyPartInfo: PartInfo = { id: 'P1', name: 'Melody', clefSign: 'G', clefLine: 2};
+  buildPartMeasures(melodyPartBuilder, scoreData.melody, melodyPartInfo, pieceAttributes);
+  melodyPartBuilder.up();
+
+  const accompanimentPartBuilder = root.ele('part', { id: 'P2' });
+  const accompanimentPartInfo: PartInfo = { id: 'P2', name: 'Accompaniment', clefSign: 'F', clefLine: 4};
+  buildPartMeasures(accompanimentPartBuilder, scoreData.accompaniment, accompanimentPartInfo, pieceAttributes);
+  accompanimentPartBuilder.up();
+
+  return root.end({ prettyPrint: true });
 }
