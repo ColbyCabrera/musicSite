@@ -46,26 +46,37 @@ interface PitchInfo {
   octave: string;
 }
 
-function parseNote(noteStr: string): PitchInfo | null {
+/**
+ * Parses a note string in scientific pitch notation (e.g., "C#4", "Bb3", or "rest")
+ * into its fundamental components: step (letter), alteration (accidental), and octave.
+ * If "rest" is provided, it returns a structure representing a rest.
+ *
+ * @param {string} noteStr - The note string to parse.
+ * @returns {PitchInfo} A `PitchInfo` object. For rests or unparseable notes,
+ *                      it returns a default structure (e.g., empty step/octave).
+ */
+function getNoteDetails(noteStr: string): PitchInfo {
+  if (noteStr.toLowerCase() === 'rest') {
+    // Return a representation for a rest.
+    return { step: '', alter: 0, octave: '' };
+  }
+
   const noteDetails = Tonal.Note.get(noteStr);
-  if (noteDetails.empty || !noteDetails.letter || noteDetails.oct === undefined) {
-    console.warn(`Could not parse note string with Tonal: ${noteStr}`);
-    return null;
+
+  // Check if Tonal.js could parse the note into meaningful components.
+  if (noteDetails.empty || !noteDetails.letter || typeof noteDetails.oct !== 'number') {
+    console.warn(`Could not parse pitched note string with Tonal: ${noteStr}`);
+    return { step: '', alter: 0, octave: '' }; // Default for unparseable pitched notes
   }
 
-  const { letter: step, acc, oct: octaveNum } = noteDetails;
-  let alter: number | undefined = undefined;
-  if (acc === '#') {
-    alter = 1;
-  } else if (acc === 'b') {
-    alter = -1;
-  } else if (acc === '##') {
-    alter = 2;
-  } else if (acc === 'bb') {
-    alter = -2;
-  }
+  const step = noteDetails.letter;
+  // noteDetails.alt provides the numerical alteration: 1 for #, -1 for b, 2 for ##, -2 for bb
+  // It can be undefined for notes without accidentals (like C in C major scale context from Tonal functions,
+  // but Tonal.Note.get('C4').alt is undefined, which we want as 0).
+  const alter = noteDetails.alt !== undefined ? noteDetails.alt : 0;
+  const octave = String(noteDetails.oct);
 
-  return { step, alter, octave: octaveNum.toString() };
+  return { step, alter, octave };
 }
 
 const RHYTHM_MAP_DIVISIONS: number = 4;
@@ -163,15 +174,18 @@ function buildPartMeasures(
       if (isRest) {
         noteElement.ele('rest').up();
       } else if (noteObj.note) {
-        const pitchInfo = parseNote(noteObj.note);
-        if (pitchInfo) {
+        const pitchInfo = getNoteDetails(noteObj.note); // Use the new function name
+        // Since getNoteDetails now always returns a PitchInfo (even for rests/unparseable),
+        // we check if it's a "real" note by seeing if step is populated.
+        if (pitchInfo.step) {
           const pitch = noteElement.ele('pitch');
           pitch.ele('step').txt(pitchInfo.step).up();
-          if (pitchInfo.alter !== undefined) {
+          if (pitchInfo.alter !== undefined && pitchInfo.alter !== 0) { // Only add alter if not 0
             pitch.ele('alter').txt(`${pitchInfo.alter}`).up();
           }
           pitch.ele('octave').txt(pitchInfo.octave).up();
           pitch.up();
+          // Accidental display logic
           if (pitchInfo.alter !== undefined && pitchInfo.alter !== 0) {
             let accidentalText = '';
             switch (pitchInfo.alter) {
