@@ -3,6 +3,7 @@ import * as Tonal from 'tonal';
 // create and XMLBuilder are no longer used directly in this file.
 // They are used by musicXmlWriter.ts
 import { InvalidInputError, MusicTheoryError, GenerationError } from './errors';
+import { parseMeter, InvalidMeterError as InvalidMeterUtilError } from './generationUtils'; // Renamed to avoid conflict
 
 import {
   GenerationSettings,
@@ -111,32 +112,24 @@ function initializeGenerationParameters(
     throw new InvalidInputError('Invalid key signature: ' + keySignature);
   }
 
-  // Meter Validation and Parsing
-  const meterMatch = meter.match(/^(\d+)\/(\d+)$/);
-  if (!meterMatch) {
-    throw new InvalidInputError(
-      "Invalid meter format. Expected 'beats/beatValue', e.g., '4/4'. Received: " +
-        meter,
-    );
-  }
-  const [, beatsStr, beatValueStr] = meterMatch;
-  const meterBeats = parseInt(beatsStr, 10);
-  const beatValue = parseInt(beatValueStr, 10);
+  let meterBeats: number;
+  let beatValue: number;
 
-  if (isNaN(meterBeats) || !Number.isSafeInteger(meterBeats) || isNaN(beatValue) || meterBeats <= 0) {
-    throw new InvalidInputError(
-      `Invalid meter beats or beat value: ${beatsStr}/${beatValueStr}. Beats must be a positive safe integer.`,
-    );
-  }
-  if (![1, 2, 4, 8, 16, 32].includes(beatValue)) {
-    throw new InvalidInputError(
-      'Unsupported beat value: ' +
-        beatValue +
-        '. Must be one of 1, 2, 4, 8, 16, 32.',
-    );
+  try {
+    const parsed = parseMeter(meter);
+    meterBeats = parsed.beats;
+    beatValue = parsed.beatType;
+  } catch (e) {
+    if (e instanceof InvalidMeterUtilError) {
+      // Propagate the message from parseMeter's InvalidMeterError, but as an InvalidInputError
+      throw new InvalidInputError(e.message);
+    }
+    // For other unexpected errors from parseMeter (if any)
+    throw new InvalidInputError("Meter processing failed: " + (e as Error).message);
   }
 
   // Timing Calculation
+  // TODO: Consider making divisions a configurable parameter in GenerationSettings
   const divisions = 4; // Divisions per quarter note (hardcoded for now, could be a setting)
   const beatDurationTicks = divisions * (4 / beatValue);
   const measureDurationTicks = meterBeats * beatDurationTicks;
@@ -818,7 +811,7 @@ function processMeasure(
  * @throws {MusicTheoryError} If `getChordInfoFromRoman` or other music theory utilities fail critically.
  * @throws {GenerationError} For other unexpected errors during the generation logic.
  */
-function generateMusicalData(
+export function generateMusicalData(
   chordProgression: string[],
   keySignature: string,
   meter: string,
