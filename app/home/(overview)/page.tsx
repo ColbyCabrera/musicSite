@@ -191,7 +191,12 @@ export default function Page() {
         );
 
         setGeneratedMusicXml(
-          scoreToMusicXML({ melody, accompaniment }, 'Title'),
+          scoreToMusicXML(
+            { melody, accompaniment },
+            keySignature,
+            meter,
+            'Generated Melody & Accompaniment',
+          ),
         );
       } catch (err) {
         console.error('Generation failed:', err);
