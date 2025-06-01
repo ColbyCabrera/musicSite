@@ -79,7 +79,6 @@ export default function Page() {
   const [harmonicComplexity, setHarmonicComplexity] = useState<number>(5); // Slider value 0-10
   const [melodicSmoothness, setMelodicSmoothness] = useState<number>(7); // Slider value 0-10
   const [dissonanceStrictness, setDissonanceStrictness] = useState<number>(5); // Slider value 0-10
-  // --- NEW STATE for Generation Style ---
   const [generationStyle, setGenerationStyle] =
     useState<GenerationStyle>('SATB'); // Default to SATB
 
