@@ -220,19 +220,7 @@ function generateMelody(
 
       const choices: { item: string[]; weight: number }[] = [
         {
-          item: validDiatonicNotes.map(noteName => {
-            const noteMidi = Note.midi(noteName);
-            if (noteMidi === null || minMidi === null || maxMidi === null) return noteName; // Fallback
-            try {
-              return Note.fromMidi(utilPutInRange(noteMidi, minMidi, maxMidi));
-            } catch (e) {
-              if (e instanceof InvalidRangeError) {
-                console.warn(`[generateMelody] Invalid range for diatonic choice: ${e.message}. Note: ${noteName}`);
-                return noteName;
-              }
-              throw e;
-            }
-          }),
+          item: validDiatonicNotes.map(noteName => convertNoteWithRange(noteName, minMidi, maxMidi)),
           weight: 1, // Base weight for diatonic movement
         }
       ];
@@ -243,18 +231,10 @@ function generateMelody(
             const noteDetails = Note.get(noteNameFromChord);
             const lastOctave = lastNoteDetails.oct ?? 4; // Fallback octave
             const currentNoteName = noteDetails.letter + lastOctave;
-            const noteMidi = Note.midi(currentNoteName);
+            // const noteMidi = Note.midi(currentNoteName); // No longer needed here
 
-            if (noteMidi === null || minMidi === null || maxMidi === null) return currentNoteName; // Fallback
-            try {
-              return Note.fromMidi(utilPutInRange(noteMidi, minMidi, maxMidi));
-            } catch (e) {
-              if (e instanceof InvalidRangeError) {
-                console.warn(`[generateMelody] Invalid range for chord tone choice: ${e.message}. Note: ${currentNoteName}`);
-                return currentNoteName;
-              }
-              throw e;
-            }
+            // if (noteMidi === null || minMidi === null || maxMidi === null) return currentNoteName; // Fallback // Handled by convertNoteWithRange
+            return convertNoteWithRange(currentNoteName, minMidi, maxMidi);
           }),
           weight: 2, // Higher weight for chord tones
         });
@@ -281,19 +261,8 @@ function generateMelody(
         const minMidiFallback = Note.midi(minRange);
         const maxMidiFallback = Note.midi(maxRange);
 
-        if (noteMidi === null || minMidiFallback === null || maxMidiFallback === null) {
-          // If any MIDI conversion fails, use note as is, though this is unlikely for fallback.
-        } else {
-          try {
-            nextMelodyNote = Note.fromMidi(utilPutInRange(noteMidi, minMidiFallback, maxMidiFallback));
-          } catch (e) {
-            if (e instanceof InvalidRangeError) {
-              console.warn(`[generateMelody] Invalid range for fallback note: ${e.message}. Note: ${nextMelodyNote}`);
-              // nextMelodyNote remains as is
-            }
-            throw e;
-          }
-        }
+        // Ensure the fallback is also within range by calling convertNoteWithRange
+        nextMelodyNote = convertNoteWithRange(nextMelodyNote, minMidiFallback, maxMidiFallback);
       }
       
       melody.push({
@@ -515,3 +484,29 @@ function transposeDiatonicallyBySteps(
  */
 // Local isInRange and putInRange functions are now removed.
 // Their functionalities are replaced by utilIsInRange and utilPutInRange from generationUtils.
+
+/**
+ * Converts a note to be within a specified MIDI range.
+ * @param noteName The name of the note (e.g., "C4").
+ * @param minMidi The minimum MIDI value of the range.
+ * @param maxMidi The maximum MIDI value of the range.
+ * @returns The converted note name or the original if conversion fails or is not needed.
+ */
+function convertNoteWithRange(noteName: string, minMidi: number | null, maxMidi: number | null): string {
+  try {
+    const noteMidi = Note.midi(noteName);
+    if (noteMidi === null || minMidi === null || maxMidi === null) {
+      return noteName; // Not enough info to convert or range is not defined
+    }
+    return Note.fromMidi(utilPutInRange(noteMidi, minMidi, maxMidi));
+  } catch (e) {
+    if (e instanceof InvalidRangeError) {
+      // Log a warning if the range was invalid, but return the original note
+      // to allow melody generation to proceed.
+      console.warn(`[convertNoteWithRange] Invalid range for note ${noteName}: ${e.message}. Original note will be used.`);
+      return noteName;
+    }
+    // For other errors, re-throw to be handled by higher-level error handlers.
+    throw e;
+  }
+}

@@ -14,6 +14,7 @@ describe('parseMeter', () => {
     ['5/4', { beats: 5, beatType: 4 }],
     ['7/8', { beats: 7, beatType: 8 }],
     [' 4 / 4 ', { beats: 4, beatType: 4 }], // Test with spaces
+    ['04/04', { beats: 4, beatType: 4 }], // Test with leading zeros
   ];
 
   validCases.forEach(([input, expected]) => {
