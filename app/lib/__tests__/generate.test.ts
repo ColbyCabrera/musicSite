@@ -158,7 +158,8 @@ describe('generateMusicalData', () => {
     const settings: GenerationSettings = { ...defaultGenerationSettings, generationStyle: 'MelodyAccompaniment' };
     const pieceData = generateMusicalData(['I'], 'C', '4/4', 1, settings);
 
-    expect(pieceData.metadata.title).toContain('Melody + Accompaniment Style');
+    expect(pieceData.metadata.title).toBe('Generated Music (MelodyAccompaniment Style)');
+    expect(pieceData.metadata.partName).toBe('Melody + Accompaniment'); // Also check partName for clarity
     expect(pieceData.measures.length).toBe(1);
     const measureEvents = pieceData.measures[0].events;
     expect(measureEvents.length).toBeGreaterThan(0);
