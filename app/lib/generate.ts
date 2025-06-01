@@ -3,7 +3,10 @@ import * as Tonal from 'tonal';
 // create and XMLBuilder are no longer used directly in this file.
 // They are used by musicXmlWriter.ts
 import { InvalidInputError, MusicTheoryError, GenerationError } from './errors';
-import { parseMeter, InvalidMeterError as InvalidMeterUtilError } from './generationUtils'; // Renamed to avoid conflict
+import {
+  parseMeter,
+  InvalidMeterError as InvalidMeterUtilError,
+} from './generationUtils'; // Renamed to avoid conflict
 
 import {
   GenerationSettings,
@@ -108,7 +111,8 @@ function initializeGenerationParameters(
 ): { keyDetails: KeyDetails; timingInfo: TimingInfo } {
   const keyDetails =
     Tonal.Key.majorKey(keySignature) ?? Tonal.Key.minorKey(keySignature);
-  if (!keyDetails || !keyDetails.tonic) { // Added !keyDetails.tonic for robustness
+  if (!keyDetails || !keyDetails.tonic) {
+    // Added !keyDetails.tonic for robustness
     throw new InvalidInputError('Invalid key signature: ' + keySignature);
   }
 
@@ -125,7 +129,9 @@ function initializeGenerationParameters(
       throw new InvalidInputError(e.message);
     }
     // For other unexpected errors from parseMeter (if any)
-    throw new InvalidInputError("Meter processing failed: " + (e as Error).message);
+    throw new InvalidInputError(
+      'Meter processing failed: ' + (e as Error).message,
+    );
   }
 
   // Timing Calculation
@@ -238,8 +244,9 @@ function getRhythmicPattern(
       remainingMeasureTicks,
     );
 
-    if (currentBeatAvailableTicks <= 0) { // No time left in the measure for this beat
-        continue;
+    if (currentBeatAvailableTicks <= 0) {
+      // No time left in the measure for this beat
+      continue;
     }
 
     // Filter the available `beatPatterns` to find those that can fit within the `currentBeatAvailableTicks`.
@@ -249,7 +256,8 @@ function getRhythmicPattern(
     const applicablePatterns = beatPatterns.filter((patternOption) => {
       // Calculate the total duration in ticks for the current patternOption.
       const patternDurationTicks =
-        patternOption[1].reduce((sum, factor) => sum + factor, 0) * beatDurationTicks;
+        patternOption[1].reduce((sum, factor) => sum + factor, 0) *
+        beatDurationTicks;
       // Check if this pattern's duration is less than or equal to the available ticks for this beat.
       // A small tolerance (0.001) is added to handle potential floating-point inaccuracies.
       return patternDurationTicks <= currentBeatAvailableTicks + 0.001;
@@ -264,7 +272,7 @@ function getRhythmicPattern(
     } else {
       // If there are applicable standard patterns, perform a weighted random selection.
       // 1. Calculate the sum of all probability weights of the applicable patterns.
-      const totalWeight = applicablePatterns.reduce((sum, p) => sum + p[0], 0,);
+      const totalWeight = applicablePatterns.reduce((sum, p) => sum + p[0], 0);
       // 2. Generate a random number between 0 and totalWeight.
       let randomRoll = Math.random() * totalWeight;
       // 3. Set a default choice to the last applicable pattern. This acts as a fallback
@@ -289,7 +297,6 @@ function getRhythmicPattern(
       0,
     );
     accumulatedTicks += ticksForChosenFactors;
-
   } // End beat loop
 
   // --- Final Adjustment to Ensure Precise Measure Duration ---
@@ -305,7 +312,7 @@ function getRhythmicPattern(
     (sum, factor) => sum + Math.round(factor * beatDurationTicks),
     0,
   );
-  
+
   // If there are any generated factors and a notable difference exists:
   if (patternFactors.length > 0) {
     // Calculate the difference between the target measure duration and the generated total.
@@ -315,21 +322,24 @@ function getRhythmicPattern(
     if (Math.abs(differenceInTicks) > 0.01) {
       const lastFactorIndex = patternFactors.length - 1;
       // Original duration of the last factor in (potentially fractional) ticks.
-      const lastFactorOriginalDurationTicks = patternFactors[lastFactorIndex] * beatDurationTicks;
+      const lastFactorOriginalDurationTicks =
+        patternFactors[lastFactorIndex] * beatDurationTicks;
       // Adjust the last factor's original duration by the calculated difference.
-      const adjustedLastFactorDurationTicks = lastFactorOriginalDurationTicks + differenceInTicks;
+      const adjustedLastFactorDurationTicks =
+        lastFactorOriginalDurationTicks + differenceInTicks;
 
       if (adjustedLastFactorDurationTicks > 0) {
         // If the adjusted duration is positive, update the last factor.
         // Convert the adjusted tick duration back into a factor relative to `beatDurationTicks`.
-        patternFactors[lastFactorIndex] = adjustedLastFactorDurationTicks / beatDurationTicks;
+        patternFactors[lastFactorIndex] =
+          adjustedLastFactorDurationTicks / beatDurationTicks;
       } else {
         // If the adjustment makes the last factor's duration zero or negative, this is problematic.
         // This could indicate an issue with initial pattern generation or very small measure durations
         // where the adjustment logic is too aggressive.
         // A warning is logged, and the pattern might not perfectly fill the measure.
         console.warn(
-          `[WARN] getRhythmicPattern: Final adjustment for measure failed. Adjusted last duration would be <= 0 (${adjustedLastFactorDurationTicks.toFixed(2)}). Original total from rounded factors: ${totalPatternTicksInMeasure.toFixed(2)} vs target ${measureDurationTicks.toFixed(2)}. Factors: [${patternFactors.map(f => f.toFixed(3)).join(',')}]`
+          `[WARN] getRhythmicPattern: Final adjustment for measure failed. Adjusted last duration would be <= 0 (${adjustedLastFactorDurationTicks.toFixed(2)}). Original total from rounded factors: ${totalPatternTicksInMeasure.toFixed(2)} vs target ${measureDurationTicks.toFixed(2)}. Factors: [${patternFactors.map((f) => f.toFixed(3)).join(',')}]`,
         );
       }
     }
@@ -339,7 +349,7 @@ function getRhythmicPattern(
     // In such a case, fill the measure with a single rhythmic event that spans the entire measure duration.
     patternFactors.push(measureDurationTicks / beatDurationTicks);
     console.warn(
-      `[WARN] getRhythmicPattern: No rhythmic factors generated for a measure with target duration ${measureDurationTicks}. Filled with a single factor for the whole measure.`
+      `[WARN] getRhythmicPattern: No rhythmic factors generated for a measure with target duration ${measureDurationTicks}. Filled with a single factor for the whole measure.`,
     );
   }
 
@@ -433,22 +443,38 @@ function generateNotesForEvent(
     currentNotes = { soprano, alto, tenor, bass }; // Update current notes state
 
     // Prepare notes for XML: Staff 1 (Soprano, Alto), Staff 2 (Tenor, Bass)
-    const staff1Notes = [soprano, alto].filter(n => n !== null) as number[];
-    const staff2Notes = [tenor, bass].filter(n => n !== null) as number[];
-    
+    const staff1Notes = [soprano, alto].filter((n) => n !== null) as number[];
+    const staff2Notes = [tenor, bass].filter((n) => n !== null) as number[];
+
     // Determine stem directions (simple heuristic based on pitch)
-    let staff1Stem: 'up' | 'down' = (soprano !== null && soprano >= 71) ? 'down' : 'up'; // Approx G4 on treble
-    let staff2Stem: 'up' | 'down' = (tenor !== null && tenor <= 55) ? 'up' : 'down'; // Approx G3 on bass
+    let staff1Stem: 'up' | 'down' =
+      soprano !== null && soprano >= 71 ? 'down' : 'up'; // Approx G4 on treble
+    let staff2Stem: 'up' | 'down' =
+      tenor !== null && tenor <= 55 ? 'up' : 'down'; // Approx G3 on bass
 
     // Create MusicXML events (block chords for SATB)
     if (staff1Notes.length > 0) {
       eventNotes.push(
-        ...createStaffEvents(staff1Notes, '1', '1', staff1Stem, eventDurationTicks, eventNoteType),
+        ...createStaffEvents(
+          staff1Notes,
+          '1',
+          '1',
+          staff1Stem,
+          eventDurationTicks,
+          eventNoteType,
+        ),
       );
     }
     if (staff2Notes.length > 0) {
       eventNotes.push(
-        ...createStaffEvents(staff2Notes, '2', '2', staff2Stem, eventDurationTicks, eventNoteType),
+        ...createStaffEvents(
+          staff2Notes,
+          '2',
+          '2',
+          staff2Stem,
+          eventDurationTicks,
+          eventNoteType,
+        ),
       );
     }
   } else {
@@ -465,15 +491,22 @@ function generateNotesForEvent(
       melodicState, // Pass melodic state for contour logic
     );
     // Determine stem direction for melody note.
-    let melodyStem: 'up' | 'down' = (melody !== null && melody >= 71) ? 'down' : 'up'; // Approx G4
+    let melodyStem: 'up' | 'down' =
+      melody !== null && melody >= 71 ? 'down' : 'up'; // Approx G4
 
     // Add melody note event to Staff 1.
     if (melody !== null) {
       eventNotes.push(
-        ...createStaffEvents([melody], '1', '1', melodyStem, eventDurationTicks, eventNoteType),
+        ...createStaffEvents(
+          [melody],
+          '1',
+          '1',
+          melodyStem,
+          eventDurationTicks,
+          eventNoteType,
+        ),
       );
     }
-
 
     // Generate Accompaniment notes (Staff 2).
     // This function aims to find a good voicing for the accompaniment based on various factors.
@@ -505,7 +538,8 @@ function generateNotesForEvent(
     let accompStemDirection: 'up' | 'down' = 'down'; // Default to down
     if (validAccompNotes.length > 0) {
       const highestAccompNote = validAccompNotes[validAccompNotes.length - 1];
-      if (highestAccompNote <= 55) { // Notes below G3 get upward stems
+      if (highestAccompNote <= 55) {
+        // Notes below G3 get upward stems
         accompStemDirection = 'up';
       }
     }
@@ -526,11 +560,13 @@ function generateNotesForEvent(
       // Create ascending arpeggio pattern
       for (let i = 0; i < numArpeggioNotes; i++) {
         const noteMidi = validAccompNotes[i];
-        
+
         // The last note takes all remaining ticks to ensure the total event duration is met precisely.
         // Other notes take the baseArpeggioNoteDuration.
         const currentArpeggioNoteDuration =
-          i === numArpeggioNotes - 1 ? remainingArpeggioTicks : baseArpeggioNoteDuration;
+          i === numArpeggioNotes - 1
+            ? remainingArpeggioTicks
+            : baseArpeggioNoteDuration;
 
         // Skip if for some reason the calculated duration is not positive
         if (currentArpeggioNoteDuration <= 0) continue;
@@ -552,13 +588,14 @@ function generateNotesForEvent(
         });
         remainingArpeggioTicks -= currentArpeggioNoteDuration;
       }
-       // Safety check: if remaining ticks are somehow still positive, it means durations didn't sum up.
+      // Safety check: if remaining ticks are somehow still positive, it means durations didn't sum up.
       if (remainingArpeggioTicks > 0) {
-        console.warn(`[WARN] Arpeggiation Warning: ${remainingArpeggioTicks} ticks remaining after arpeggiating ${eventDurationTicks} total. This may indicate a calculation error.`);
+        console.warn(
+          `[WARN] Arpeggiation Warning: ${remainingArpeggioTicks} ticks remaining after arpeggiating ${eventDurationTicks} total. This may indicate a calculation error.`,
+        );
         // Potentially, the last note's duration could be adjusted here if this case occurs.
         // However, with current logic (last note takes all remaining), this should not be hit.
       }
-
     } else {
       // If not arpeggiating, create a block chord for the accompaniment.
       // console.log(
@@ -698,9 +735,14 @@ function processMeasure(
   melodicState: MelodicState, // This can be mutated by generateNotesForEvent
   measureIndex: number,
 ): ProcessMeasureResult {
-  const { generationStyle, numAccompanimentVoices, rhythmicComplexity, dissonanceStrictness } = generationSettings;
+  const {
+    generationStyle,
+    numAccompanimentVoices,
+    rhythmicComplexity,
+    dissonanceStrictness,
+  } = generationSettings;
   const currentMeasureEvents: MusicalEvent[] = [];
-  
+
   // This variable will track the 'previousNotes' context *within* the current measure,
   // updating from one rhythmic event to the next. It starts with the notes from the end of the previous measure.
   let eventPreviousNotesHolder = { ...measurePreviousNotes };
@@ -709,39 +751,74 @@ function processMeasure(
   try {
     chordInfoResult = getChordInfoFromRoman(romanWithInv, keySignature);
   } catch (e) {
-    console.warn(`[WARN] processMeasure: Measure ${measureIndex + 1}: Error processing Roman numeral "${romanWithInv}". Error: ${(e as Error).message}. Adding rests.`);
+    console.warn(
+      `[WARN] processMeasure: Measure ${measureIndex + 1}: Error processing Roman numeral "${romanWithInv}". Error: ${(e as Error).message}. Adding rests.`,
+    );
     chordInfoResult = null;
   }
 
   if (!chordInfoResult) {
     // --- Handle Chord Parsing Error or null result ---
-    const restType = getNoteTypeFromDuration(timingInfo.measureDurationTicks, timingInfo.divisions);
-    currentMeasureEvents.push(...generateRestEventsForDuration(timingInfo.measureDurationTicks, restType, '1', '1'));
-    currentMeasureEvents.push(...generateRestEventsForDuration(timingInfo.measureDurationTicks, restType, '2', '2'));
-    
+    const restType = getNoteTypeFromDuration(
+      timingInfo.measureDurationTicks,
+      timingInfo.divisions,
+    );
+    currentMeasureEvents.push(
+      ...generateRestEventsForDuration(
+        timingInfo.measureDurationTicks,
+        restType,
+        '1',
+        '1',
+      ),
+    );
+    currentMeasureEvents.push(
+      ...generateRestEventsForDuration(
+        timingInfo.measureDurationTicks,
+        restType,
+        '2',
+        '2',
+      ),
+    );
+
     // If chord parsing fails, the context for the next measure is effectively reset.
     return {
       measureEvents: currentMeasureEvents,
-      notesAtEndOfMeasure: initializePreviousNotes(generationStyle, numAccompanimentVoices),
+      notesAtEndOfMeasure: initializePreviousNotes(
+        generationStyle,
+        numAccompanimentVoices,
+      ),
     };
   }
 
   // --- Valid Chord: Generate Rhythmic Events ---
   const { notes: baseChordNotes, requiredBassPc } = chordInfoResult;
-  const rhythmicPatternFactors = getRhythmicPattern(timingInfo, rhythmicComplexity);
+  const rhythmicPatternFactors = getRhythmicPattern(
+    timingInfo,
+    rhythmicComplexity,
+  );
   let currentTickInMeasure = 0;
 
-  for (let eventIndex = 0; eventIndex < rhythmicPatternFactors.length; eventIndex++) {
+  for (
+    let eventIndex = 0;
+    eventIndex < rhythmicPatternFactors.length;
+    eventIndex++
+  ) {
     if (currentTickInMeasure >= timingInfo.measureDurationTicks) {
-      break; 
+      break;
     }
 
     const durationFactor = rhythmicPatternFactors[eventIndex];
-    let eventDurationTicks = Math.round(timingInfo.beatDurationTicks * durationFactor);
+    let eventDurationTicks = Math.round(
+      timingInfo.beatDurationTicks * durationFactor,
+    );
 
-    if (currentTickInMeasure + eventDurationTicks > timingInfo.measureDurationTicks) {
+    if (
+      currentTickInMeasure + eventDurationTicks >
+      timingInfo.measureDurationTicks
+    ) {
       const originalEventDuration = eventDurationTicks;
-      eventDurationTicks = timingInfo.measureDurationTicks - currentTickInMeasure;
+      eventDurationTicks =
+        timingInfo.measureDurationTicks - currentTickInMeasure;
       console.warn(
         `[WARN] processMeasure: Measure ${measureIndex + 1}, Event ${eventIndex + 1}: Duration factor ${durationFactor.toFixed(2)} (orig: ${originalEventDuration} ticks) truncated to ${eventDurationTicks} ticks to fit measure. Current: ${currentTickInMeasure}/${timingInfo.measureDurationTicks}.`,
       );
@@ -750,7 +827,7 @@ function processMeasure(
     if (eventDurationTicks <= 0) {
       continue;
     }
-    
+
     const eventGenerationResult = generateNotesForEvent(
       baseChordNotes,
       requiredBassPc,
@@ -766,7 +843,7 @@ function processMeasure(
 
     checkVoiceLeadingRules(
       eventGenerationResult.currentNotes, // Notes chosen for *this* event
-      eventPreviousNotesHolder,       // Notes from the *previous event in this measure*
+      eventPreviousNotesHolder, // Notes from the *previous event in this measure*
       generationStyle,
       measureIndex,
       eventIndex,
@@ -780,14 +857,22 @@ function processMeasure(
 
   // Add trailing rests if the rhythmic pattern didn't exactly fill the measure
   if (currentTickInMeasure < timingInfo.measureDurationTicks) {
-    const remainingTicks = timingInfo.measureDurationTicks - currentTickInMeasure;
+    const remainingTicks =
+      timingInfo.measureDurationTicks - currentTickInMeasure;
     if (remainingTicks > 0) {
-      const restType = getNoteTypeFromDuration(remainingTicks, timingInfo.divisions);
-      currentMeasureEvents.push(...generateRestEventsForDuration(remainingTicks, restType, '1', '1'));
-      currentMeasureEvents.push(...generateRestEventsForDuration(remainingTicks, restType, '2', '2'));
+      const restType = getNoteTypeFromDuration(
+        remainingTicks,
+        timingInfo.divisions,
+      );
+      currentMeasureEvents.push(
+        ...generateRestEventsForDuration(remainingTicks, restType, '1', '1'),
+      );
+      currentMeasureEvents.push(
+        ...generateRestEventsForDuration(remainingTicks, restType, '2', '2'),
+      );
     }
   }
-  
+
   return {
     measureEvents: currentMeasureEvents,
     notesAtEndOfMeasure: eventPreviousNotesHolder, // This is the state at the end of the current measure
@@ -821,28 +906,35 @@ export function generateMusicalData(
   const { generationStyle, numAccompanimentVoices } = generationSettings;
 
   // --- 1. Initialization ---
-  const { keyDetails, timingInfo } = initializeGenerationParameters(keySignature, meter);
+  const { keyDetails, timingInfo } = initializeGenerationParameters(
+    keySignature,
+    meter,
+  );
   // previousNotesForNextMeasure will hold the notes state from the end of the *previous* measure,
   // to be passed as context to the *current* measure's processing.
-  let previousNotesForNextMeasure = initializePreviousNotes(generationStyle, numAccompanimentVoices);
+  let previousNotesForNextMeasure = initializePreviousNotes(
+    generationStyle,
+    numAccompanimentVoices,
+  );
   const generatedMeasures: MeasureData[] = [];
   const melodicState: MelodicState = { lastDirection: 0, directionStreak: 0 }; // Initial melodic state
 
-  console.info(`[INFO] Generating ${numMeasures} measures in ${keySignature} ${generationStyle} style.`);
+  console.info(
+    `[INFO] Generating ${numMeasures} measures in ${keySignature} ${generationStyle} style.`,
+  );
 
   // --- 2. Generate Measures Loop ---
   for (let measureIndex = 0; measureIndex < numMeasures; measureIndex++) {
     const romanWithInv = chordProgression[measureIndex] ?? 'I'; // Default to 'I' if progression is too short
 
-
     const measureResult = processMeasure(
       romanWithInv,
       keySignature,
       previousNotesForNextMeasure, // Pass notes from the end of the previous measure
-      generationSettings,          // Pass all settings for processMeasure to destructure as needed
+      generationSettings, // Pass all settings for processMeasure to destructure as needed
       keyDetails,
       timingInfo,
-      melodicState,                // Pass and allow mutation by functions within processMeasure
+      melodicState, // Pass and allow mutation by functions within processMeasure
       measureIndex,
     );
 
@@ -855,7 +947,6 @@ export function generateMusicalData(
     // Update previousNotesForNextMeasure for the *next* iteration of the loop,
     // using the notes from the end of the measure just processed.
     previousNotesForNextMeasure = measureResult.notesAtEndOfMeasure;
-
   } // End measure loop
 
   // --- 3. Construct Final Data Structure ---
@@ -878,6 +969,6 @@ export function generateMusicalData(
   return pieceData;
 }
 
-// All MusicXML generation logic, including createMusicXMLString, 
+// All MusicXML generation logic, including createMusicXMLString,
 // addMusicalEventsToXML, and getFifths, has been moved to app/lib/musicXmlWriter.ts.
 // The function createMusicXMLString is imported from there and used in generateVoices.
