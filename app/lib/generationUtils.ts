@@ -71,10 +71,10 @@ export function parseMeter(meterString: string): ParsedMeter {
   const beatType = parseInt(beatTypeStr, 10);
 
   // Double check that the parsed number string is the same as the original string
-  if (beats.toString() !== beatsStr) {
+  if (Number(beatsStr) !== beats) {
       throw new InvalidMeterError('Beats is not a valid integer string.');
   }
-  if (beatType.toString() !== beatTypeStr) {
+  if (Number(beatTypeStr) !== beatType) {
       throw new InvalidMeterError('Beat type is not a valid integer string.');
   }
 
