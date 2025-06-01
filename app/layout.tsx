@@ -9,7 +9,6 @@ export const metadata: Metadata = {
     default: 'Schedule | RMS',
   },
   description: 'The RMS Fitness management app',
-  viewport: 'width=device-width, initial-scale=1.0',
   metadataBase: new URL('https://rms-scheduler.vercel.app'),
   manifest: '/manifest.json',
   icons: [
