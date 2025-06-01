@@ -81,8 +81,9 @@ export default function Page() {
   const [melodicSmoothness, setMelodicSmoothness] = useState<number>(7); // Slider value 0-10
   const [dissonanceStrictness, setDissonanceStrictness] = useState<number>(5); // Slider value 0-10
   const [generationStyle, setGenerationStyle] =
-    useState<GenerationStyle>('SATB'); // Default to SATB
-  const [useAI, setUseAI] = useState<boolean>(false); // Added useAI state
+    useState<GenerationStyle>('SATB');
+  const [enableAiAccompaniment, setEnableAiAccompaniment] =
+    useState<boolean>(false);
 
   const [generatedProgression, setGeneratedProgression] = useState<
     string[] | null
@@ -111,12 +112,12 @@ export default function Page() {
     // Use setTimeout to allow UI to update before potentially blocking generation
     setTimeout(async () => {
       try {
-        const settings: GenerationSettings & { useAI?: boolean } = { // Added useAI to settings type temporarily
+        const settings: GenerationSettings = {
           melodicSmoothness,
           dissonanceStrictness,
           harmonicComplexity,
           generationStyle,
-          useAI, // Added useAI to settings object
+          enableAiAccompaniment,
         };
 
         // 1. Generate Progression
@@ -146,7 +147,7 @@ export default function Page() {
               melody: { min: 'F3', max: 'F6' },
               accompaniment: { min: 'B1', max: 'G4' },
             },
-            useAI, // Pass useAI state
+            enableAiAccompaniment, // Pass enableAIAccompaniment state
           );
           setGeneratedMusicXml(
             scoreToMusicXML(
@@ -267,13 +268,17 @@ export default function Page() {
           {/* AI Switch - Placed after Generation Style and before Number of Measures for logical grouping */}
           {generationStyle === 'MelodyAccompaniment' && (
             <div className="mt-4 flex items-center space-x-2">
-              <Switch id="ai-switch" checked={useAI} onCheckedChange={setUseAI} />
+              <Switch
+                id="ai-switch"
+                checked={enableAiAccompaniment}
+                onCheckedChange={setEnableAiAccompaniment}
+              />
               <Label htmlFor="ai-switch">Use AI for Accompaniment</Label>
             </div>
           )}
 
-          {/* Number of Measures (Moved to its own row for better layout) */}
-          <div className="grid grid-cols-1 gap-4 pt-4"> {/* Added pt-4 for spacing */}
+          {/* Number of Measures  */}
+          <div className="grid grid-cols-1 gap-4 pt-4">
             <div className="space-y-2">
               <Label htmlFor="num-measures">Number of Measures</Label>
               <Input
