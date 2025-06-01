@@ -49,10 +49,14 @@ export default async function generateMA(
     let geminiResponseText: string | undefined;
     try {
       const genAI = getGenAI(); // Initialize or get existing instance
-    const result = await genAI.models.generateContent({ // Correct for v0.13.0
-      model: "gemini-1.5-flash-preview-0514", // Model specified here
-      contents: [{role: "user", parts: [{
-          text: `You are an expert virtual composer specializing in creating sophisticated and stylistically appropriate musical accompaniments.
+      const result = await genAI.models.generateContent({
+        model: 'gemini-2.5-flash-preview-05-20', // Model specified here
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `You are an expert virtual composer specializing in creating sophisticated and stylistically appropriate musical accompaniments.
 
 Your task is to generate a compelling accompaniment for a given melody. The accompaniment should be rhythmically and harmonically engaging, demonstrating a high degree of musical craftsmanship within the provided chord progression.
 
