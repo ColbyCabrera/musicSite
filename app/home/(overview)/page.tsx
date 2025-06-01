@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/ui/shadcn/components/ui/select';
+import { Switch } from '@/app/ui/shadcn/components/ui/switch'; // Added Switch import
 import { GenerationSettings } from '@/app/lib/types';
 import { generateChordProgression } from '@/app/lib/progression';
 import { generateVoices } from '@/app/lib/generate';
@@ -81,6 +82,7 @@ export default function Page() {
   const [dissonanceStrictness, setDissonanceStrictness] = useState<number>(5); // Slider value 0-10
   const [generationStyle, setGenerationStyle] =
     useState<GenerationStyle>('SATB'); // Default to SATB
+  const [useAI, setUseAI] = useState<boolean>(false); // Added useAI state
 
   const [generatedProgression, setGeneratedProgression] = useState<
     string[] | null
@@ -93,61 +95,7 @@ export default function Page() {
 
   // --- Event Handlers ---
 
-  const handleGenerate = () => {
-    setIsLoading(true);
-    setError(null);
-    setGeneratedProgression(null);
-    setGeneratedMusicXml(null);
-
-    // Basic validation
-    if (numMeasures <= 0) {
-      setError('Number of measures must be greater than 0.');
-      setIsLoading(false);
-      return;
-    }
-
-    // Use setTimeout to allow UI to update before potentially blocking generation
-    setTimeout(() => {
-      try {
-        const settings: GenerationSettings = {
-          melodicSmoothness,
-          dissonanceStrictness,
-          harmonicComplexity,
-          generationStyle,
-        };
-
-        // 1. Generate Progression
-        const progression = generateChordProgression(
-          keySignature,
-          numMeasures,
-          harmonicComplexity,
-        );
-        setGeneratedProgression(progression);
-
-        // 2. Generate Voices (MusicXML)
-        const musicXml = generateVoices(
-          progression,
-          keySignature,
-          meter,
-          numMeasures,
-          settings, // Pass the updated settings object
-        );
-        setGeneratedMusicXml(musicXml);
-      } catch (err) {
-        console.error('Generation failed:', err);
-        setError(
-          err instanceof Error
-            ? err.message
-            : 'An unknown error occurred during generation.',
-        );
-        setGeneratedProgression(null); // Clear progression on error too
-      } finally {
-        setIsLoading(false);
-      }
-    }, 10); // Short delay
-  };
-
-  const handleGenerateMA = () => {
+  const handleUnifiedGenerate = () => {
     setIsLoading(true);
     setError(null);
     setGeneratedProgression(null);
@@ -163,11 +111,12 @@ export default function Page() {
     // Use setTimeout to allow UI to update before potentially blocking generation
     setTimeout(async () => {
       try {
-        const settings: GenerationSettings = {
+        const settings: GenerationSettings & { useAI?: boolean } = { // Added useAI to settings type temporarily
           melodicSmoothness,
           dissonanceStrictness,
           harmonicComplexity,
           generationStyle,
+          useAI, // Added useAI to settings object
         };
 
         // 1. Generate Progression
@@ -178,25 +127,36 @@ export default function Page() {
         );
         setGeneratedProgression(progression);
 
-        const { melody, accompaniment } = await generateMA(
-          progression,
-          keySignature,
-          meter,
-          {
-            melody: { min: 'F3', max: 'F6' },
-            accompaniment: { min: 'B1', max: 'G4' },
-          },
-          true, // enableAiAccompaniment
-        );
-
-        setGeneratedMusicXml(
-          scoreToMusicXML(
-            { melody, accompaniment },
+        if (generationStyle === 'SATB') {
+          // 2. Generate Voices (MusicXML)
+          const musicXml = generateVoices(
+            progression,
             keySignature,
             meter,
-            'Generated Melody & Accompaniment',
-          ),
-        );
+            numMeasures,
+            settings,
+          );
+          setGeneratedMusicXml(musicXml);
+        } else if (generationStyle === 'MelodyAccompaniment') {
+          const { melody, accompaniment } = await generateMA(
+            progression,
+            keySignature,
+            meter,
+            {
+              melody: { min: 'F3', max: 'F6' },
+              accompaniment: { min: 'B1', max: 'G4' },
+            },
+            useAI, // Pass useAI state
+          );
+          setGeneratedMusicXml(
+            scoreToMusicXML(
+              { melody, accompaniment },
+              keySignature,
+              meter,
+              'Generated Melody & Accompaniment',
+            ),
+          );
+        }
       } catch (err) {
         console.error('Generation failed:', err);
         setError(
@@ -304,8 +264,16 @@ export default function Page() {
             </div>
           </div>
 
+          {/* AI Switch - Placed after Generation Style and before Number of Measures for logical grouping */}
+          {generationStyle === 'MelodyAccompaniment' && (
+            <div className="mt-4 flex items-center space-x-2">
+              <Switch id="ai-switch" checked={useAI} onCheckedChange={setUseAI} />
+              <Label htmlFor="ai-switch">Use AI for Accompaniment</Label>
+            </div>
+          )}
+
           {/* Number of Measures (Moved to its own row for better layout) */}
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 gap-4 pt-4"> {/* Added pt-4 for spacing */}
             <div className="space-y-2">
               <Label htmlFor="num-measures">Number of Measures</Label>
               <Input
@@ -389,9 +357,9 @@ export default function Page() {
           )}
         </CardContent>
         <CardFooter className="flex flex-col items-start space-y-4">
-          {/* --- Action Button --- */}
+          {/* --- Unified Action Button --- */}
           <Button
-            onClick={handleGenerate}
+            onClick={handleUnifiedGenerate}
             disabled={isLoading}
             className="w-full md:w-auto"
           >
@@ -402,21 +370,6 @@ export default function Page() {
               </>
             ) : (
               'Generate Music'
-            )}
-          </Button>
-
-          <Button
-            onClick={handleGenerateMA}
-            disabled={isLoading}
-            className="w-full md:w-auto"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              'Generate MusicMA'
             )}
           </Button>
 
