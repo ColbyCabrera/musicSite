@@ -50,7 +50,7 @@ export default async function generateMA(
     rangeConstraints.melody.max,
   );
 
-  let accompaniment: Melody; // Define accompaniment here
+  let accompaniment: Melody;
 
   if (enableAiAccompaniment) {
     let geminiResponseText: string | undefined;
@@ -160,8 +160,7 @@ Return ONLY the JSON array of accompaniment note objects with no comments. Do no
       );
     }
   } else {
-    accompaniment = []; // Set to empty array if AI accompaniment is disabled
-    console.log('AI accompaniment is disabled. Skipping Gemini API call.');
+    accompaniment = [];
   }
 
   return {
