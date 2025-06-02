@@ -165,7 +165,7 @@ export default function Page() {
             ? err.message
             : 'An unknown error occurred during generation.',
         );
-        setGeneratedProgression(null); // Clear progression on error too
+        setGeneratedProgression(null);
       } finally {
         setIsLoading(false);
       }
