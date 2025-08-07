@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/ui/shadcn/components/ui/select';
-import { Switch } from '@/app/ui/shadcn/components/ui/switch'; // Added Switch import
+// Switch import removed (AI accompaniment toggle removed)
 import { GenerationSettings } from '@/app/lib/types';
 import { generateChordProgression } from '@/app/lib/progression';
 import { generateVoices } from '@/app/lib/generate';
@@ -82,8 +82,6 @@ export default function Page() {
   const [dissonanceStrictness, setDissonanceStrictness] = useState<number>(5); // Slider value 0-10
   const [generationStyle, setGenerationStyle] =
     useState<GenerationStyle>('SATB');
-  const [enableAiAccompaniment, setEnableAiAccompaniment] =
-    useState<boolean>(false);
 
   const [generatedProgression, setGeneratedProgression] = useState<
     string[] | null
@@ -117,7 +115,6 @@ export default function Page() {
           dissonanceStrictness,
           harmonicComplexity,
           generationStyle,
-          enableAiAccompaniment,
         };
 
         // 1. Generate Progression
@@ -140,14 +137,12 @@ export default function Page() {
           setGeneratedMusicXml(musicXml);
         } else if (generationStyle === 'MelodyAccompaniment') {
           const { melody, accompaniment } = await generateMA(
-            progression,
             keySignature,
             meter,
             {
               melody: { min: 'F3', max: 'F6' },
               accompaniment: { min: 'B1', max: 'G4' },
             },
-            enableAiAccompaniment,
           );
           setGeneratedMusicXml(
             scoreToMusicXML(
@@ -265,17 +260,7 @@ export default function Page() {
             </div>
           </div>
 
-          {/* AI Switch - Placed after Generation Style and before Number of Measures for logical grouping */}
-          {generationStyle === 'MelodyAccompaniment' && (
-            <div className="mt-4 flex items-center space-x-2">
-              <Switch
-                id="ai-switch"
-                checked={enableAiAccompaniment}
-                onCheckedChange={setEnableAiAccompaniment}
-              />
-              <Label htmlFor="ai-switch">Use AI for Accompaniment</Label>
-            </div>
-          )}
+          {/* AI accompaniment switch removed */}
 
           {/* Number of Measures  */}
           <div className="grid grid-cols-1 gap-4 pt-4">

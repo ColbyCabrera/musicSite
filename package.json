@@ -2,7 +2,7 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
     "lint": "next lint",
     "prettier": "prettier --write --ignore-unknown .",
     "prettier:check": "prettier --check --ignore-unknown .",
@@ -17,7 +17,6 @@
     "@fullcalendar/multimonth": "^6.1.11",
     "@fullcalendar/react": "^6.1.11",
     "@fullcalendar/resource-timeline": "^6.1.11",
-    "@google/genai": "^0.13.0",
     "@heroicons/react": "^2.2.0",
     "@hookform/resolvers": "^3.3.4",
     "@radix-ui/react-accordion": "^1.2.3",
@@ -60,7 +59,7 @@
     "fullcalendar": "^6.1.11",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.376.0",
-    "next": "^14.0.2",
+    "next": "^15.4.6",
     "next-auth": "^5.0.0-beta.19",
     "opensheetmusicdisplay": "^1.9.0",
     "postcss": "8.4.31",
@@ -83,7 +82,6 @@
     "zod": "^3.23.4"
   },
   "devDependencies": {
-    "@next/swc-win32-x64-msvc": "^15.4.0",
     "@swc/core": "^1.11.29",
     "@tailwindcss/container-queries": "^0.1.1",
     "@types/bcrypt": "^5.0.1",
@@ -94,7 +92,7 @@
     "@vercel/style-guide": "^5.0.1",
     "dotenv": "^16.3.1",
     "eslint": "^8.52.0",
-    "eslint-config-next": "^14.0.0",
+    "eslint-config-next": "^15.0.0",
     "eslint-config-prettier": "9.0.0",
     "jest": "^29.7.0",
     "prettier": "^3.0.3",

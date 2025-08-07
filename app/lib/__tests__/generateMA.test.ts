@@ -27,46 +27,13 @@ jest.mock('../rhythm', () => ({
   }),
 }));
 
-// Mock the Gemini API call within generateMA to avoid actual API calls during tests
-jest.mock('@google/genai', () => {
-  const mockGenerateContent = jest.fn();
-  return {
-    GoogleGenAI: jest.fn().mockImplementation(() => ({
-      models: { // Adjusted for v0.13.0: generateContent is directly on models
-        generateContent: mockGenerateContent,
-      },
-    })),
-    HarmBlockThreshold: {}, // Add other exports if needed by the module
-    HarmCategory: {},
-  };
-});
+// AI generation removed: no need to mock '@google/genai'
 
 
 describe('generateMA', () => {
-  // Access the mock directly for assertions or to set mock return values per test
-  let mockGenerateContent: jest.Mock;
-
   beforeEach(() => {
     // Reset mocks
     jest.clearAllMocks();
-    // Re-assign mockGenerateContent before each test if needed, or get it from the module
-    // This assumes the mock structure from above.
-    const GenAI = require('@google/genai');
-    mockGenerateContent = GenAI.GoogleGenAI().models.generateContent;
-
-
-    // Mock a successful API response for accompaniment by default for most tests
-    // Tests specifically for AI accompaniment failure can override this.
-    mockGenerateContent.mockResolvedValue({
-      // Simulate the structure of the response object based on v0.13.0
-      // It should directly contain a `text` property for the generated content.
-      text: JSON.stringify([
-        { note: 'C3', rhythm: 4 },
-        { note: 'E3', rhythm: 4 },
-        { note: 'G3', rhythm: 4 },
-        { note: 'C3', rhythm: 4 },
-      ]),
-    });
   });
 
   describe('generateMelody component (via generateMA)', () => {
@@ -79,7 +46,7 @@ describe('generateMA', () => {
         melody: { min: null as any, max: null as any }, // Test null case
         accompaniment: { min: 'C2', max: 'C4' },
       };
-      const { melody } = await generateMA(progression, key, meter, rangeConstraints, false);
+  const { melody } = await generateMA(progression, key, meter, rangeConstraints);
       expect(melody.length).toBeGreaterThan(0);
       // Further checks could verify notes are generally within a reasonable default octave
       // e.g. melody.every(n => Note.octave(n.note) >= 3 && Note.octave(n.note) <= 5)
@@ -91,7 +58,7 @@ describe('generateMA', () => {
         melody: { min: 'C4', max: 'C5' }, // Range where C4, G4, D5 etc. fit
         accompaniment: { min: 'C2', max: 'C4' },
       };
-      const { melody } = await generateMA(progression, key, meter, rangeConstraints, false);
+  const { melody } = await generateMA(progression, key, meter, rangeConstraints);
       expect(melody.length).toBeGreaterThan(0);
       melody.forEach(item => {
         const midi = Note.midi(item.note);
@@ -112,7 +79,7 @@ describe('generateMA', () => {
         return { notes: [60,64,67], noteNames: ['C4', 'E4', 'G4'], requiredBassPc: null };
       });
 
-      const { melody } = await generateMA(progression, key, meter, rangeConstraints, false);
+  const { melody } = await generateMA(progression, key, meter, rangeConstraints);
       expect(melody.length).toBeGreaterThan(0);
       let clampedOrShifted = false;
       melody.forEach(item => {
@@ -142,7 +109,7 @@ describe('generateMA', () => {
         return { notes: [60,64,67], noteNames: ['C4', 'E4', 'G4'], requiredBassPc: null };
       });
 
-      const { melody } = await generateMA(progression, key, meter, rangeConstraints, false);
+  const { melody } = await generateMA(progression, key, meter, rangeConstraints);
       expect(melody.length).toBeGreaterThan(0);
       melody.forEach(item => {
         const midi = Note.midi(item.note);
@@ -163,7 +130,7 @@ describe('generateMA', () => {
         return { notes: [60,64,67], noteNames: ['C4', 'E4', 'G4'], requiredBassPc: null };
       });
 
-      const { melody } = await generateMA(progression, key, meter, rangeConstraints, false);
+  const { melody } = await generateMA(progression, key, meter, rangeConstraints);
       expect(melody.length).toBeGreaterThan(0);
       let shifted = false;
       melody.forEach(item => {
@@ -197,7 +164,7 @@ describe('generateMA', () => {
       // by catching it and returning the original note. We want to ensure this path is tested.
       // The warning "Invalid range for note..." should appear.
 
-      const { melody } = await generateMA(progression, key, meter, rangeConstraints, false);
+  const { melody } = await generateMA(progression, key, meter, rangeConstraints);
       expect(melody.length).toBeGreaterThan(0);
       // Expect console.warn to have been called due to the InvalidRangeError being caught by convertNoteWithRange
       expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('[convertNoteWithRange] Invalid range for note'));
@@ -218,50 +185,5 @@ describe('generateMA', () => {
 
   // TODO: Add tests for AI Accompaniment specific logic if generateMA handles that
   // For example, test what happens if the Gemini API call fails or returns malformed data.
-  describe('generateMA with AI Accompaniment', () => {
-    const progression = ['I'];
-    const key = 'C';
-    const meter = '4/4';
-    const rangeConstraints = {
-      melody: { min: 'C4', max: 'C5' },
-      accompaniment: { min: 'C2', max: 'C4' },
-    };
-
-    test('should return AI generated accompaniment when enabled', async () => {
-      const expectedAccompaniment = [
-        { note: 'C3', rhythm: 4 }, { note: 'E3', rhythm: 4 },
-        { note: 'G3', rhythm: 4 }, { note: 'C3', rhythm: 4 }
-      ];
-      mockGenerateContent.mockResolvedValue({ text: JSON.stringify(expectedAccompaniment) });
-
-      const { accompaniment } = await generateMA(progression, key, meter, rangeConstraints, true);
-      expect(accompaniment).toEqual(expectedAccompaniment);
-      expect(mockGenerateContent).toHaveBeenCalledTimes(1);
-    });
-
-    test('should return empty accompaniment when AI is disabled', async () => {
-      const { accompaniment } = await generateMA(progression, key, meter, rangeConstraints, false);
-      expect(accompaniment).toEqual([]);
-      expect(mockGenerateContent).not.toHaveBeenCalled();
-    });
-
-    test('should throw GenerationError if AI response is not valid JSON', async () => {
-      mockGenerateContent.mockResolvedValue({ text: "This is not JSON" });
-      await expect(generateMA(progression, key, meter, rangeConstraints, true))
-        .rejects.toThrowError(/Failed to parse accompaniment from API response/);
-    });
-
-    test('should throw ApiError if Gemini API call fails', async () => {
-        mockGenerateContent.mockRejectedValue(new Error("API Network Error"));
-        await expect(generateMA(progression, key, meter, rangeConstraints, true))
-            .rejects.toThrowError(/Failed to generate accompaniment using Gemini API: API Network Error/);
-    });
-
-    test('should throw ApiError if no text response from Gemini API', async () => {
-        mockGenerateContent.mockResolvedValue({ text: undefined }); // Simulate undefined text response
-        await expect(generateMA(progression, key, meter, rangeConstraints, true))
-            .rejects.toThrowError('Received no text response from Gemini API.');
-    });
-
-  });
+  // AI accompaniment tests removed.
 });

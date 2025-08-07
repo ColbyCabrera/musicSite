@@ -46,10 +46,6 @@ export interface GenerationSettings {
    */
   dissonanceStrictness: number;
   /**
-   * Determines whether to use AI for generating the accompaniment part in 'MelodyAccompaniment' style.
-   */
-  enableAiAccompaniment?: boolean;
-  /**
    * The number of voices in the accompaniment part, primarily for `MelodyAccompaniment` style.
    * Defaults to 3 if not specified.
    */

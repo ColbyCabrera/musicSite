@@ -45,7 +45,7 @@ import { Button } from '@/app/ui/shadcn/components/ui/button';
 import React, { useState, useTransition, useEffect } from 'react';
 import SubmitButtonWithLoader from '../submit-button-with-loader';
 import { Separator } from '@/app/ui/shadcn/components/ui/separator';
-import { updateUserColor, updateUserRole, deleteUser, updateUserAiAccompaniment } from '@/app/lib/actions';
+import { updateUserColor, updateUserRole, deleteUser } from '@/app/lib/actions';
 
 const settingsFormSchema = z.object({
   color: z
@@ -57,7 +57,6 @@ const settingsFormSchema = z.object({
     .or(z.literal('')),
 
   role: z.enum(['USER', 'ADMIN', 'CLIENT']).optional(),
-  enableAiAccompaniment: z.boolean().optional(),
 });
 
 type SettingsFormValues = z.infer<typeof settingsFormSchema>;
@@ -80,7 +79,7 @@ export default function SettingsForm({
     defaultValues: {
       color: targetUser.color || '#000000',
       role: targetUser.role,
-      enableAiAccompaniment: targetUser.enableAiAccompaniment || false,
+      
     },
   });
 
@@ -89,7 +88,7 @@ export default function SettingsForm({
     form.reset({
       color: userToEdit.color || '#000000',
       role: userToEdit.role,
-      enableAiAccompaniment: userToEdit.enableAiAccompaniment || false,
+      
     });
   }, [selectedUser, form]);
 
@@ -108,8 +107,7 @@ export default function SettingsForm({
         await updateUserRole(selectedUser.id, data.role as UserRole);
       }
 
-      // Update AI accompaniment setting
-      await updateUserAiAccompaniment(targetUser.id, data.enableAiAccompaniment ?? false);
+  // AI accompaniment setting removed
     } catch (error) {
       console.error('Failed to save settings:', error);
     } finally {
@@ -226,25 +224,7 @@ export default function SettingsForm({
               />
             )}
 
-            <FormField
-              control={form.control}
-              name="enableAiAccompaniment"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                  <div className="space-y-0.5">
-                    <FormLabel>AI Accompaniment</FormLabel>
-                    {/* Optional: <FormDescription>Enable or disable AI-generated music accompaniment.</FormDescription> */}
-                  </div>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      disabled={isLoading}
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
+            {/* AI accompaniment form field removed */}
 
             <Separator />
 
