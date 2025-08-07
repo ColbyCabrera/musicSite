@@ -56,6 +56,8 @@ export interface GenerationSettings {
    * (Used by `getRhythmicPattern` in `generate.ts` and `generateRhythm` in `rhythm.ts`).
    */
   rhythmicComplexity?: number; // Added based on usage in generate.ts
+  // Optional legacy alias (kept to avoid breaking tests referencing voiceLeadingStrictness).
+  voiceLeadingStrictness?: number;
 }
 
 /**
