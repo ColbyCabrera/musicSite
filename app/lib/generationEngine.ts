@@ -39,6 +39,10 @@ interface ProcessMeasureResultInternal {
   notesAtEndOfMeasure: PreviousNotes;
 }
 
+/**
+ * High-level options for score generation.
+ * Provide musical context and (optionally) a difficulty slider or fine‑grained overrides.
+ */
 export interface GenerateScoreOptions {
   chordProgression: string[];
   keySignature: string;
@@ -49,6 +53,10 @@ export interface GenerateScoreOptions {
   overrides?: Partial<GenerationSettings>;
 }
 
+/**
+ * Convenience wrapper: generate a MusicXML string for given inputs.
+ * Applies difficulty slider mapping then delegates to the lower level engine.
+ */
 export function generateScore(options: GenerateScoreOptions): string {
   const {
     chordProgression,
@@ -500,4 +508,31 @@ export function generateMusicalData(
     },
     measures,
   };
+}
+
+/**
+ * Developer helper: Accepts a space / comma separated chord progression string (e.g. "I vi ii V7 I")
+ * and returns generated MusicXML directly. Suitable for quick experiments in scripts / playgrounds.
+ *
+ * Example:
+ *   generateScoreFromString("I vi ii V7 I", { keySignature: 'C', meter: '4/4', numMeasures: 5 });
+ */
+export function generateScoreFromString(
+  progression: string,
+  opts: Omit<GenerateScoreOptions, 'chordProgression' | 'numMeasures'> & { numMeasures?: number },
+): string {
+  const chordProgression = progression
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const numMeasures = opts.numMeasures ?? chordProgression.length;
+  return generateScore({
+    chordProgression,
+    numMeasures,
+    keySignature: opts.keySignature,
+    meter: opts.meter,
+    style: opts.style,
+    difficulty: opts.difficulty,
+    overrides: opts.overrides,
+  });
 }
