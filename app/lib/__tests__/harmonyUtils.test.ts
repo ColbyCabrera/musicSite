@@ -1,4 +1,4 @@
-import { parseRomanNumeral, getKeyDetails, getInitialDiatonicChordSymbol, applyChordModifications, getChordNotesAndBass, getChordInfoFromRoman, getExtendedChordNotePool, midiToNoteName } from '../harmonyUtils';
+import { parseRomanNumeral, getKeyDetails, getInitialDiatonicChordSymbol, applyChordModifications, getChordNotesAndBass, getChordInfoFromRoman, getExtendedChordNotePool, midiToNoteName } from '../theory/harmony';
 import { InvalidInputError, MusicTheoryError } from '../errors'; // Assuming errors are exported
 
 describe('parseRomanNumeral', () => {

@@ -76,3 +76,30 @@ To run this project on your local machine, follow these steps:
 6.  Open your browser and navigate to `http://localhost:3000` (or the port specified in your terminal).
 
 **Note:** The `seed` script (`npm run seed`) suggests that there might be a database that needs to be seeded. Check `scripts/seed.js` and any related documentation for more details if you need to set up a database.
+
+## Architecture & Module Organization
+
+Recent refactor introduced clearer domain-based modules under `app/lib/`:
+
+* `generationEngine.ts` – Core orchestration (was part of monolithic `generate.ts`).
+* `difficulty.ts` – Maps a single difficulty slider (0–10) to structured `GenerationSettings`.
+* `theory/harmony.ts` – Roman numeral parsing, chord construction, pitch-class pools, MIDI → name helpers.
+* `rhythm/index.ts` – Rhythm utilities: beat factor pattern (`generateBeatFactorPattern`) and note value sequence (`generateNoteValueSequence`).
+* `voicing*.ts` – SATB and melody+accompaniment voicing helpers.
+* `musicXmlWriter.ts` & related utils – Serialization to MusicXML.
+
+### Deprecated (Shims Kept Temporarily)
+* `harmonyUtils.ts` – Re-exports from `theory/harmony.ts` and logs a deprecation warning.
+* `rhythm.ts` – Re-exports `generateNoteValueSequence` as `generateRhythm` for backward compatibility.
+
+### Public API Barrel
+Import from `app/lib/index.ts` for a stable surface:
+```ts
+import { generateScore, mapDifficultyToSettings } from '@/app/lib';
+```
+
+Planned next steps (not yet implemented):
+1. Additional separation for XML helpers (`xml/` folder) and voicing (`voicing/`).
+2. Remove shims after external code migrates.
+3. Enhanced docs for difficulty mapping and rhythm strategies.
+

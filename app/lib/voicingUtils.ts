@@ -1,7 +1,7 @@
 // src/voicingUtils.ts
 import * as Tonal from 'tonal';
 import { VOICE_RANGES } from './constants';
-import { midiToNoteName } from './harmonyUtils'; // Used for logging, can be removed if logs are stripped
+import { midiToNoteName } from './theory/harmony'; // Used for logging, can be removed if logs are stripped
 import { MelodicState, GenerationStyle } from './types';
 
 /**

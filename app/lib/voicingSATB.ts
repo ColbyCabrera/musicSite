@@ -7,7 +7,7 @@ import {
 } from './constants';
 import { findClosestNote } from './voicingUtils';
 import { GenerationError } from './errors'; // Added import
-import { midiToNoteName } from './harmonyUtils'; // Used only for console logs
+import { midiToNoteName } from './theory/harmony'; // Used only for console logs
 
 /**
  * Assigns a MIDI note for the Bass voice in an SATB (Soprano, Alto, Tenor, Bass) context.

@@ -2,7 +2,7 @@
 import * as Tonal from 'tonal';
 // XMLBuilder is not used in this file after addNotesToStaffXML was moved.
 import { MusicXMLPitch } from './types';
-import { midiToNoteName } from './harmonyUtils';
+import { midiToNoteName } from './theory/harmony';
 import { MusicTheoryError } from './errors'; // Added import
 
 /**

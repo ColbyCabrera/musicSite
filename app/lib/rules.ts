@@ -9,7 +9,7 @@ import {
     VOICE_SPACING_LIMIT_SATB,
     MELODY_ACCOMPANIMENT_SPACING_LIMIT,
 } from './constants';
-import { midiToNoteName } from './harmonyUtils';
+import { midiToNoteName } from './theory/harmony';
 
 /**
  * Checks for parallel perfect fifths and octaves between two voices moving from a previous

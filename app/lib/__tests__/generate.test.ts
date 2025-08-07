@@ -2,11 +2,11 @@
 import { generateMusicalData, /* other potential exports if needed */ } from '../generate';
 import { /* processMeasure, getRhythmicPattern - not exported, test via generateMusicalData or make them testable */ } from '../generate'; // If testing private functions
 import { GeneratedPieceData, GenerationSettings, KeyDetails, TimingInfo, PreviousNotes, MusicalEvent, MelodicState, GenerationStyle } from '../types';
-import { getChordInfoFromRoman } from '../harmonyUtils';
+import { getChordInfoFromRoman } from '../theory/harmony';
 
 // Mocking helper functions that are complex dependencies or not directly under test here
-jest.mock('../harmonyUtils', () => ({
-  ...jest.requireActual('../harmonyUtils'), // Import and retain default behavior
+jest.mock('../theory/harmony', () => ({
+  ...jest.requireActual('../theory/harmony'), // Import and retain default behavior
   getChordInfoFromRoman: jest.fn(),
 }));
 jest.mock('../musicXmlWriter'); // If createMusicXMLString is called by a tested function

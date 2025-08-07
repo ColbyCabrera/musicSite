@@ -2,7 +2,7 @@
 import { VOICE_RANGES, MELODY_ACCOMPANIMENT_SPACING_LIMIT } from './constants';
 import { findClosestNote } from './voicingUtils';
 import { GenerationError } from './errors'; // Added import
-// import { midiToNoteName } from './harmonyUtils'; // Not used directly, only for console.warn/error
+// import { midiToNoteName } from './theory/harmony'; // Not used directly, only for console.warn/error
 
 /**
  * Generates an accompaniment voicing, typically consisting of three notes, suitable for

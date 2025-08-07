@@ -3,8 +3,8 @@ import { Note } from 'tonal';
 import { InvalidRangeError } from '../generationUtils'; // Assuming this is the correct path
 
 // Mock dependencies if necessary, e.g., getChordInfoFromRoman, generateRhythm, Gemini API
-jest.mock('../harmonyUtils', () => ({
-  ...jest.requireActual('../harmonyUtils'),
+jest.mock('../theory/harmony', () => ({
+  ...jest.requireActual('../theory/harmony'),
   getChordInfoFromRoman: jest.fn().mockImplementation((roman, key) => {
     // Provide a simple mock implementation for testing
     if (roman === 'I' && key === 'C') return { notes: [60, 64, 67], noteNames: ['C4', 'E4', 'G4'], requiredBassPc: null };
@@ -73,7 +73,7 @@ describe('generateMA', () => {
         accompaniment: { min: 'C2', max: 'C4' },
       };
       // Mock getChordInfoFromRoman to return notes that would likely go out of range
-      (require('../harmonyUtils').getChordInfoFromRoman as jest.Mock).mockImplementation((roman, key) => {
+      (require('../theory/harmony').getChordInfoFromRoman as jest.Mock).mockImplementation((roman, key) => {
         if (roman === 'I') return { notes: [60,64,67], noteNames: ['C4', 'E4', 'G4'], requiredBassPc: null }; // G4 (midi 67) is above E4 (midi 64)
         if (roman === 'V') return { notes: [67,71,74], noteNames: ['G4', 'B4', 'D5'], requiredBassPc: null }; // All above or at edge
         return { notes: [60,64,67], noteNames: ['C4', 'E4', 'G4'], requiredBassPc: null };
@@ -103,7 +103,7 @@ describe('generateMA', () => {
         melody: { min: 'G4', max: 'C5' }, // Range G4, A4, B4, C5
         accompaniment: { min: 'C2', max: 'C4' },
       };
-      (require('../harmonyUtils').getChordInfoFromRoman as jest.Mock).mockImplementation((roman, key) => {
+      (require('../theory/harmony').getChordInfoFromRoman as jest.Mock).mockImplementation((roman, key) => {
         if (roman === 'I') return { notes: [60,64,67], noteNames: ['C4', 'E4', 'G4'], requiredBassPc: null }; // C4, E4 are below G4
         if (roman === 'V') return { notes: [55,59,62], noteNames: ['G3', 'B3', 'D4'], requiredBassPc: null }; // All below G4
         return { notes: [60,64,67], noteNames: ['C4', 'E4', 'G4'], requiredBassPc: null };
@@ -125,7 +125,7 @@ describe('generateMA', () => {
         accompaniment: { min: 'C2', max: 'C4' },
       };
        // Mock to provide notes in C4 octave, expecting them to be shifted to C5
-      (require('../harmonyUtils').getChordInfoFromRoman as jest.Mock).mockImplementation((roman, key) => {
+      (require('../theory/harmony').getChordInfoFromRoman as jest.Mock).mockImplementation((roman, key) => {
         if (roman === 'I') return { notes: [60,64,67], noteNames: ['C4', 'E4', 'G4'], requiredBassPc: null };
         return { notes: [60,64,67], noteNames: ['C4', 'E4', 'G4'], requiredBassPc: null };
       });

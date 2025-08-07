@@ -1,4 +1,4 @@
-import { getChordInfoFromRoman } from './harmonyUtils';
+import { getChordInfoFromRoman } from './theory/harmony';
 import { Interval, Key, Note, Scale } from 'tonal';
 import { weightedRandomChoice } from './utils';
 import { isInRange as utilIsInRange, putInRange as utilPutInRange, InvalidRangeError } from './generationUtils';

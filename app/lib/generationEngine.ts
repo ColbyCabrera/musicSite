@@ -19,10 +19,9 @@ import {
   KeyDetails,
   TimingInfo,
 } from './types';
-import {
-  getChordInfoFromRoman,
-  getExtendedChordNotePool,
-} from './harmonyUtils';
+import { getChordInfoFromRoman, getExtendedChordNotePool } from './theory/harmony';
+// Explicitly import from rhythm/index to avoid colliding with legacy rhythm.ts
+import { generateBeatFactorPattern } from './rhythm/index';
 import { assignSopranoOrMelodyNote } from './voicingUtils';
 import { assignBassNoteSATB, assignInnerVoicesSATB } from './voicingSATB';
 import { generateAccompanimentVoicing } from './voicingMelodyAccomp';
@@ -142,62 +141,7 @@ function initializePreviousNotes(
     : { melody: null, accompaniment: Array(numAccompanimentVoices).fill(null) };
 }
 
-function getRhythmicPattern(
-  timingInfo: TimingInfo,
-  complexity: number = 3,
-): number[] {
-  const { meterBeats, beatDurationTicks, measureDurationTicks } = timingInfo;
-  const patternFactors: number[] = [];
-  let accumulatedTicks = 0;
-  const subdivisionChance = Math.max(0.1, Math.min(0.9, complexity / 10));
-  const beatPatterns: [number, number[]][] = [
-    [1.0 - subdivisionChance, [1.0]],
-    [subdivisionChance, [0.5, 0.5]],
-  ];
-  for (let beatIndex = 0; beatIndex < meterBeats; beatIndex++) {
-    if (accumulatedTicks >= measureDurationTicks) break;
-    const remaining = measureDurationTicks - accumulatedTicks;
-    const currentBeatAvailableTicks = Math.min(beatDurationTicks, remaining);
-    if (currentBeatAvailableTicks <= 0) continue;
-    const applicable = beatPatterns.filter(
-      (p) =>
-        p[1].reduce((s, f) => s + f, 0) * beatDurationTicks <=
-        currentBeatAvailableTicks + 0.001,
-    );
-    let chosen: number[];
-    if (!applicable.length) {
-      chosen = [currentBeatAvailableTicks / beatDurationTicks];
-    } else {
-      const total = applicable.reduce((s, p) => s + p[0], 0);
-      let roll = Math.random() * total;
-      chosen = applicable[applicable.length - 1][1];
-      for (const p of applicable) {
-        roll -= p[0];
-        if (roll <= 0) {
-          chosen = p[1];
-          break;
-        }
-      }
-    }
-    patternFactors.push(...chosen);
-    accumulatedTicks += chosen.reduce((s, f) => s + f * beatDurationTicks, 0);
-  }
-  const totalTicks = patternFactors.reduce(
-    (s, f) => s + Math.round(f * beatDurationTicks),
-    0,
-  );
-  if (patternFactors.length) {
-    const diff = measureDurationTicks - totalTicks;
-    if (Math.abs(diff) > 0.01) {
-      const i = patternFactors.length - 1;
-      const newDur = patternFactors[i] * beatDurationTicks + diff;
-      if (newDur > 0) patternFactors[i] = newDur / beatDurationTicks;
-    }
-  } else if (measureDurationTicks > 0 && accumulatedTicks <= 0) {
-    patternFactors.push(measureDurationTicks / beatDurationTicks);
-  }
-  return patternFactors;
-}
+// Rhythm pattern now supplied by rhythm module (generateBeatFactorPattern)
 
 function createStaffEvents(
   notes: (number | null)[],
@@ -457,7 +401,7 @@ function processMeasure(
     };
   }
   const { notes: baseChordNotes, requiredBassPc } = chordInfoResult;
-  const rhythmFactors = getRhythmicPattern(timingInfo, rhythmicComplexity);
+  const rhythmFactors = generateBeatFactorPattern(timingInfo, rhythmicComplexity);
   let tick = 0;
   for (let eventIndex = 0; eventIndex < rhythmFactors.length; eventIndex++) {
     if (tick >= timingInfo.measureDurationTicks) break;
