@@ -301,7 +301,7 @@ const RHYTHMIC_CELLS: Record<
 function getGroupingPlan(numerator: number, denominator: number): GroupingPlan {
   const baseUnit = new Fraction(1, denominator); // Base unit is 1/denominator (e.g. quarter note in 4/4, eighth in 6/8)
   const beatType =
-    [6, 9, 12].includes(numerator) && denominator === 8 ? 'compound' : 'simple';
+    [6, 9, 12].includes(numerator) && denominator === 8 ? 'compound' : 'simple'; // Determine compound or simple meter
 
   // Irregular / compound heuristics
   if (denominator === 8) {
