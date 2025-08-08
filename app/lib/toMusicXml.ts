@@ -64,7 +64,11 @@ function getNoteDetails(noteStr: string): PitchInfo {
   const noteDetails = Tonal.Note.get(noteStr);
 
   // Check if Tonal.js could parse the note into meaningful components.
-  if (noteDetails.empty || !noteDetails.letter || typeof noteDetails.oct !== 'number') {
+  if (
+    noteDetails.empty ||
+    !noteDetails.letter ||
+    typeof noteDetails.oct !== 'number'
+  ) {
     console.warn(`Could not parse pitched note string with Tonal: ${noteStr}`);
     return { step: '', alter: 0, octave: '' }; // Default for unparseable pitched notes
   }
@@ -113,8 +117,9 @@ interface PartInfo {
   clefLine: number;
 }
 
+// Using 'any' for builder chain type to avoid dependency on internal xmlbuilder2 typing variations.
 function buildPartMeasures(
-  partBuilder: XMLBuilder,
+  partBuilder: any,
   notes: NoteObject[],
   partInfo: PartInfo,
   pieceAttributes: PieceAttributes,
@@ -123,8 +128,15 @@ function buildPartMeasures(
   let measureNumber = 1;
   let noteBuffer = [...notes];
 
-  while (noteBuffer.length > 0 || (measureNumber === 1 && currentMeasureTicks === 0) || (currentMeasureTicks > 0 && currentMeasureTicks < pieceAttributes.measureDurationTicks)) {
-    const measureElement = partBuilder.ele('measure', { number: `${measureNumber}` });
+  while (
+    noteBuffer.length > 0 ||
+    (measureNumber === 1 && currentMeasureTicks === 0) ||
+    (currentMeasureTicks > 0 &&
+      currentMeasureTicks < pieceAttributes.measureDurationTicks)
+  ) {
+    const measureElement = partBuilder.ele('measure', {
+      number: `${measureNumber}`,
+    });
 
     if (measureNumber === 1) {
       const attributes = measureElement.ele('attributes');
@@ -146,23 +158,33 @@ function buildPartMeasures(
     }
 
     let measureFilledInLoop = false;
-    while (currentMeasureTicks < pieceAttributes.measureDurationTicks && noteBuffer.length > 0) {
+    while (
+      currentMeasureTicks < pieceAttributes.measureDurationTicks &&
+      noteBuffer.length > 0
+    ) {
       measureFilledInLoop = true;
       const noteObj = noteBuffer[0];
 
       if (!noteObj.rhythm) {
-        console.warn(`Skipping note object with no rhythm: ${JSON.stringify(noteObj)}`);
+        console.warn(
+          `Skipping note object with no rhythm: ${JSON.stringify(noteObj)}`,
+        );
         noteBuffer.shift();
         continue;
       }
       const rhythmInfo = rhythmMap.get(noteObj.rhythm);
       if (!rhythmInfo) {
-        console.warn(`Skipping note with unrecognized rhythm: ${noteObj.rhythm}`);
+        console.warn(
+          `Skipping note with unrecognized rhythm: ${noteObj.rhythm}`,
+        );
         noteBuffer.shift();
         continue;
       }
 
-      if (currentMeasureTicks + rhythmInfo.duration > pieceAttributes.measureDurationTicks) {
+      if (
+        currentMeasureTicks + rhythmInfo.duration >
+        pieceAttributes.measureDurationTicks
+      ) {
         break;
       }
 
@@ -180,7 +202,8 @@ function buildPartMeasures(
         if (pitchInfo.step) {
           const pitch = noteElement.ele('pitch');
           pitch.ele('step').txt(pitchInfo.step).up();
-          if (pitchInfo.alter !== undefined && pitchInfo.alter !== 0) { // Only add alter if not 0
+          if (pitchInfo.alter !== undefined && pitchInfo.alter !== 0) {
+            // Only add alter if not 0
             pitch.ele('alter').txt(`${pitchInfo.alter}`).up();
           }
           pitch.ele('octave').txt(pitchInfo.octave).up();
@@ -208,7 +231,9 @@ function buildPartMeasures(
           }
         } else {
           noteElement.ele('rest').up();
-          console.warn(`Unparseable note string '${noteObj.note}', adding rest instead.`);
+          console.warn(
+            `Unparseable note string '${noteObj.note}', adding rest instead.`,
+          );
         }
       } else {
         noteElement.ele('rest').up();
@@ -216,7 +241,7 @@ function buildPartMeasures(
 
       noteElement.ele('duration').txt(`${rhythmInfo.duration}`).up();
       if (!isRest && rhythmInfo.type) {
-          noteElement.ele('type').txt(rhythmInfo.type).up();
+        noteElement.ele('type').txt(rhythmInfo.type).up();
       }
       noteElement.ele('voice').txt('1').up();
       noteElement.ele('staff').txt('1').up();
@@ -226,7 +251,8 @@ function buildPartMeasures(
     }
 
     if (currentMeasureTicks < pieceAttributes.measureDurationTicks) {
-      const remainingTicks = pieceAttributes.measureDurationTicks - currentMeasureTicks;
+      const remainingTicks =
+        pieceAttributes.measureDurationTicks - currentMeasureTicks;
       if (remainingTicks > 0) {
         const restElement = measureElement.ele('note');
         restElement.ele('rest').up();
@@ -242,18 +268,22 @@ function buildPartMeasures(
     measureElement.up();
 
     if (currentMeasureTicks >= pieceAttributes.measureDurationTicks) {
-        currentMeasureTicks = 0;
-        measureNumber++;
-    } else if (noteBuffer.length === 0 && !measureFilledInLoop && measureNumber > 1) {
-        break;
+      currentMeasureTicks = 0;
+      measureNumber++;
+    } else if (
+      noteBuffer.length === 0 &&
+      !measureFilledInLoop &&
+      measureNumber > 1
+    ) {
+      break;
     }
 
     if (measureNumber > 1000) {
-        console.error("Measure count exceeded 1000. Aborting.");
-        break;
+      console.error('Measure count exceeded 1000. Aborting.');
+      break;
     }
     if (noteBuffer.length === 0 && currentMeasureTicks === 0) {
-        break;
+      break;
     }
   }
 }
@@ -266,14 +296,21 @@ export function scoreToMusicXML(
 ): string {
   const divisions = RHYTHM_MAP_DIVISIONS;
 
-  const keyDetails = Tonal.Key.majorKey(keySignature) ?? Tonal.Key.minorKey(keySignature);
+  const keyDetails =
+    Tonal.Key.majorKey(keySignature) ?? Tonal.Key.minorKey(keySignature);
   let keyFifths = 0;
   let keyMode = 'major';
-  if (keyDetails && typeof keyDetails.alteration === 'number' && keyDetails.type) {
+  if (
+    keyDetails &&
+    typeof keyDetails.alteration === 'number' &&
+    keyDetails.type
+  ) {
     keyFifths = keyDetails.alteration;
     keyMode = keyDetails.type;
   } else {
-    console.warn(`Could not determine key signature details for "${keySignature}". Defaulting to C major.`);
+    console.warn(
+      `Could not determine key signature details for "${keySignature}". Defaulting to C major.`,
+    );
   }
 
   const timeSigMatch = timeSignature.match(/^(\d+)\/(\d+)$/);
@@ -283,7 +320,9 @@ export function scoreToMusicXML(
     timeBeats = parseInt(timeSigMatch[1], 10);
     timeBeatType = parseInt(timeSigMatch[2], 10);
   } else {
-    console.warn(`Invalid time signature format "${timeSignature}". Defaulting to 4/4.`);
+    console.warn(
+      `Invalid time signature format "${timeSignature}". Defaulting to 4/4.`,
+    );
   }
   const ticksPerBeat = divisions * (4 / timeBeatType);
   const measureDurationTicks = timeBeats * ticksPerBeat;
@@ -307,22 +346,55 @@ export function scoreToMusicXML(
   root.ele('work').ele('work-title').txt(title).up().up();
   const identification = root.ele('identification');
   identification.ele('software').txt('AI Music Generation Tool').up();
-  identification.ele('encoding-date').txt(new Date().toISOString().split('T')[0]).up();
+  identification
+    .ele('encoding-date')
+    .txt(new Date().toISOString().split('T')[0])
+    .up();
   identification.up();
 
   const partList = root.ele('part-list');
-  partList.ele('score-part', { id: 'P1' }).ele('part-name').txt('Melody').up().up();
-  partList.ele('score-part', { id: 'P2' }).ele('part-name').txt('Accompaniment').up().up();
+  partList
+    .ele('score-part', { id: 'P1' })
+    .ele('part-name')
+    .txt('Melody')
+    .up()
+    .up();
+  partList
+    .ele('score-part', { id: 'P2' })
+    .ele('part-name')
+    .txt('Accompaniment')
+    .up()
+    .up();
   partList.up();
 
   const melodyPartBuilder = root.ele('part', { id: 'P1' });
-  const melodyPartInfo: PartInfo = { id: 'P1', name: 'Melody', clefSign: 'G', clefLine: 2};
-  buildPartMeasures(melodyPartBuilder, scoreData.melody, melodyPartInfo, pieceAttributes);
+  const melodyPartInfo: PartInfo = {
+    id: 'P1',
+    name: 'Melody',
+    clefSign: 'G',
+    clefLine: 2,
+  };
+  buildPartMeasures(
+    melodyPartBuilder,
+    scoreData.melody,
+    melodyPartInfo,
+    pieceAttributes,
+  );
   melodyPartBuilder.up();
 
   const accompanimentPartBuilder = root.ele('part', { id: 'P2' });
-  const accompanimentPartInfo: PartInfo = { id: 'P2', name: 'Accompaniment', clefSign: 'F', clefLine: 4};
-  buildPartMeasures(accompanimentPartBuilder, scoreData.accompaniment, accompanimentPartInfo, pieceAttributes);
+  const accompanimentPartInfo: PartInfo = {
+    id: 'P2',
+    name: 'Accompaniment',
+    clefSign: 'F',
+    clefLine: 4,
+  };
+  buildPartMeasures(
+    accompanimentPartBuilder,
+    scoreData.accompaniment,
+    accompanimentPartInfo,
+    pieceAttributes,
+  );
   accompanimentPartBuilder.up();
 
   return root.end({ prettyPrint: true });
