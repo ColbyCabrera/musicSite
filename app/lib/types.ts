@@ -54,8 +54,8 @@ export interface GenerationSettings {
    * Controls the rhythmic complexity of generated patterns (0-10).
    * Higher values lead to more subdivided and varied rhythms.
    * (Used by `getRhythmicPattern` in `generate.ts` and `generateRhythm` in `rhythm.ts`).
-   */
-  rhythmicComplexity?: number; // Added based on usage in generate.ts
+  */
+  rhythmicComplexity?: number; // Controls rhythm complexity; used by generateBeatFactorPattern in generationEngine and generateNoteValueSequence in rhythm module
   // Optional legacy alias (kept to avoid breaking tests referencing voiceLeadingStrictness).
   voiceLeadingStrictness?: number;
 }

@@ -29,7 +29,7 @@ import {
 // Switch import removed (AI accompaniment toggle removed)
 import { GenerationSettings } from '@/app/lib/types';
 import { generateChordProgression } from '@/app/lib/progression';
-import { generateVoices } from '@/app/lib/generate';
+import { generateVoices } from '@/app/lib';
 import generateMA from '@/app/lib/generateMA';
 import { scoreToMusicXML } from '@/app/lib/toMusicXml';
 

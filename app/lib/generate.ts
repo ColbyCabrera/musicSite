@@ -1,5 +1,6 @@
-// generate.ts (compatibility wrapper)
-// Original implementation moved to generationEngine.ts for clarity.
-export { generateVoices, generateMusicalData, generateScore } from './generationEngine';
-export type { GenerateScoreOptions } from './generationEngine';
-export { mapDifficultyToSettings } from './difficulty';
+// DEPRECATED: compatibility wrapper removed.
+// Please import directly from '@/app/lib' (barrel) or specific modules:
+// e.g. import { generateVoices } from '@/app/lib';
+// This file will be removed in a future release.
+// Stub to preserve build but prevent usage.
+throw new Error("'@/app/lib/generate' is deprecated. Use '@/app/lib' or specific imports from 'generationEngine'.");
