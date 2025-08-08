@@ -89,16 +89,19 @@ export function generateNoteValueSequence(
     32: 0,
   };
   if (complexity === 1) {
+    weights[1] = 1;
     weights[2] = 8;
     weights[4] = 10;
   } else if (complexity === 2) {
-    weights[2] = 3;
+    weights[1] = 1;
+    weights[2] = 5;
     weights[4] = 10;
   } else if (complexity === 3) {
     weights[2] = 5;
     weights[4] = 10;
     weights[8] = 1;
   } else if (complexity === 4) {
+    weights[1] = 1;
     weights[2] = 5;
     weights[4] = 10;
     weights[8] = 8;
