@@ -1,4 +1,4 @@
-# AI Music Generation Tool
+# Sheet Music Generation Tool
 
 This application allows you to generate musical pieces procedurally. You can define various parameters such as key signature, time signature, harmonic complexity, and melodic style to create unique compositions. The generated music can be exported as a MusicXML file for use in other music software.
 
