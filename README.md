@@ -88,10 +88,6 @@ Recent refactor introduced clearer domain-based modules under `app/lib/`:
 * `voicing*.ts` – SATB and melody+accompaniment voicing helpers.
 * `musicXmlWriter.ts` & related utils – Serialization to MusicXML.
 
-### Deprecated (Shims Kept Temporarily)
-* `harmonyUtils.ts` – Re-exports from `theory/harmony.ts` and logs a deprecation warning.
-* `rhythm.ts` – Re-exports `generateNoteValueSequence` as `generateRhythm` for backward compatibility.
-
 ### Public API Barrel
 Import from `app/lib/index.ts` for a stable surface:
 ```ts
