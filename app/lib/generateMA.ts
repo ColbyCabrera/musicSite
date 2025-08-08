@@ -102,6 +102,9 @@ function generateMelody(
     let rhythm;
     try {
       rhythm = generateNoteValueSequence(meter, 3); // Using moderate complexity for melody rhythm
+      console.log(
+        `Generated rhythm for "${chordSymbol}": ${JSON.stringify(rhythm)}`,
+      );
     } catch (e) {
       console.error(
         `generateMelody: Failed to generate rhythm for meter "${meter}". Error: ${(e as Error).message}`,
