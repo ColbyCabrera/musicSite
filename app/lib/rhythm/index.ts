@@ -331,6 +331,25 @@ function getGroupingPlan(numerator: number, denominator: number): GroupingPlan {
   };
 }
 
+/**
+ * Validates and parses a time signature string (e.g. '4/4', '6/8').
+ *
+ * Rules enforced:
+ *  - Must contain exactly one '/'.
+ *  - Numerator & denominator must be positive integers.
+ *  - Denominator must be in the supported set (1,2,4,8,16,32) used elsewhere for
+ *    rhythmic value generation.
+ *  - Only a curated list of numerators per denominator is accepted to limit
+ *    generation to commonly used simple / compound / additive meters supported
+ *    by the current rhythm engine (e.g. 5/4, 7/8 are allowed; 13/8 is rejected).
+ *
+ * On failure an InvalidInputError is thrown describing the issue.
+ * On success returns the numeric numerator & denominator.
+ *
+ * @param meter Time signature string (e.g. '3/4').
+ * @returns Parsed { num, den } object.
+ * @throws InvalidInputError if malformed or unsupported.
+ */
 function validateMeter(meter: string): { num: number; den: number } {
   const parts = meter.split('/');
   if (parts.length !== 2)
