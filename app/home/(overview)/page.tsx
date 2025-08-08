@@ -137,6 +137,7 @@ export default function Page() {
           setGeneratedMusicXml(musicXml);
         } else if (generationStyle === 'MelodyAccompaniment') {
           const { melody, accompaniment } = await generateMA(
+            progression, // chord progression array (first arg)
             keySignature,
             meter,
             {

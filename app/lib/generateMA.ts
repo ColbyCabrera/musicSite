@@ -17,6 +17,18 @@ export default async function generateMA(
     accompaniment: { min: string; max: string };
   },
 ): Promise<{ melody: Melody; accompaniment: Melody }> {
+  // Defensive argument validation to surface common misuse (passing key as first arg)
+  if (!Array.isArray(progression) || typeof key !== 'string' || typeof meter !== 'string') {
+    throw new InvalidInputError(
+      'generateMA usage: generateMA(progression: string[], key: string, meter: string, rangeConstraints). ' +
+      'Received invalid argument types. Ensure you pass the chord progression array first.'
+    );
+  }
+  if (!rangeConstraints || !rangeConstraints.melody || !rangeConstraints.accompaniment) {
+    throw new InvalidInputError(
+      'generateMA: Missing rangeConstraints { melody: {min,max}, accompaniment: {min,max} }.'
+    );
+  }
   const melody = generateMelody(
     progression,
     key,

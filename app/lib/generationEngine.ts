@@ -149,6 +149,17 @@ function initializePreviousNotes(
     : { melody: null, accompaniment: Array(numAccompanimentVoices).fill(null) };
 }
 
+// Type guard & repair helpers -------------------------------------------------
+function isPrevNotesMelodyAccompaniment(value: PreviousNotes): value is PreviousNotesMelodyAccompaniment {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'melody' in value &&
+    'accompaniment' in value &&
+    Array.isArray((value as any).accompaniment)
+  );
+}
+
 // Rhythm pattern now supplied by rhythm module (generateBeatFactorPattern)
 
 function createStaffEvents(
@@ -280,7 +291,26 @@ function generateNotesForEvent(
         ),
       );
   } else {
-    const prevMA = previousNotes as PreviousNotesMelodyAccompaniment;
+    // Defensive: if previousNotes is not in expected shape (possible legacy caller), repair it.
+    let prevMA: PreviousNotesMelodyAccompaniment;
+    if (isPrevNotesMelodyAccompaniment(previousNotes)) {
+      prevMA = previousNotes;
+      if (!Array.isArray(prevMA.accompaniment)) {
+        prevMA.accompaniment = Array(numAccompanimentVoices).fill(null);
+      } else if (prevMA.accompaniment.length !== numAccompanimentVoices) {
+        // Resize preserving existing values
+        const resized = Array(numAccompanimentVoices).fill(null) as (number | null)[];
+        for (let i = 0; i < Math.min(prevMA.accompaniment.length, numAccompanimentVoices); i++) {
+          resized[i] = prevMA.accompaniment[i];
+        }
+        prevMA.accompaniment = resized;
+      }
+    } else {
+      prevMA = {
+        melody: null,
+        accompaniment: Array(numAccompanimentVoices).fill(null),
+      };
+    }
     const melody = assignSopranoOrMelodyNote(
       fullPool,
       prevMA.melody,
@@ -479,7 +509,12 @@ export function generateMusicalData(
     const res = processMeasure(
       roman,
       keySignature,
-      prevForNext,
+      // Defensive: ensure previous notes object shape stays consistent for style
+      generationStyle === 'MelodyAccompaniment' && !('melody' in (prevForNext as any))
+        ? initializePreviousNotes('MelodyAccompaniment', numAccompanimentVoices)
+        : generationStyle === 'SATB' && !('soprano' in (prevForNext as any))
+        ? initializePreviousNotes('SATB')
+        : prevForNext,
       generationSettings,
       keyDetails,
       timingInfo,
