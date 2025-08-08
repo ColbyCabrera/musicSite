@@ -1,9 +1,13 @@
+import { GenerationError, InvalidInputError, MusicTheoryError } from './errors';
 import { getChordInfoFromRoman } from './theory/harmony';
 import { Interval, Key, Note, Scale } from 'tonal';
 import { weightedRandomChoice } from './utils';
-import { isInRange as utilIsInRange, putInRange as utilPutInRange, InvalidRangeError } from './generationUtils';
-import { generateRhythm } from './rhythm';
-import { GenerationError, InvalidInputError, MusicTheoryError } from './errors';
+import {
+  isInRange as utilIsInRange,
+  putInRange as utilPutInRange,
+  InvalidRangeError,
+} from './generationUtils';
+import { generateNoteValueSequence } from './rhythm';
 
 // AI generation removed: no external API usage retained.
 
@@ -18,15 +22,23 @@ export default async function generateMA(
   },
 ): Promise<{ melody: Melody; accompaniment: Melody }> {
   // Defensive argument validation to surface common misuse (passing key as first arg)
-  if (!Array.isArray(progression) || typeof key !== 'string' || typeof meter !== 'string') {
+  if (
+    !Array.isArray(progression) ||
+    typeof key !== 'string' ||
+    typeof meter !== 'string'
+  ) {
     throw new InvalidInputError(
       'generateMA usage: generateMA(progression: string[], key: string, meter: string, rangeConstraints). ' +
-      'Received invalid argument types. Ensure you pass the chord progression array first.'
+        'Received invalid argument types. Ensure you pass the chord progression array first.',
     );
   }
-  if (!rangeConstraints || !rangeConstraints.melody || !rangeConstraints.accompaniment) {
+  if (
+    !rangeConstraints ||
+    !rangeConstraints.melody ||
+    !rangeConstraints.accompaniment
+  ) {
     throw new InvalidInputError(
-      'generateMA: Missing rangeConstraints { melody: {min,max}, accompaniment: {min,max} }.'
+      'generateMA: Missing rangeConstraints { melody: {min,max}, accompaniment: {min,max} }.',
     );
   }
   const melody = generateMelody(
@@ -89,7 +101,7 @@ function generateMelody(
 
     let rhythm;
     try {
-      rhythm = generateRhythm(meter, 3); // Using moderate complexity for melody rhythm
+      rhythm = generateNoteValueSequence(meter, 3); // Using moderate complexity for melody rhythm
     } catch (e) {
       console.error(
         `generateMelody: Failed to generate rhythm for meter "${meter}". Error: ${(e as Error).message}`,
