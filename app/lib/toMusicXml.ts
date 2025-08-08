@@ -1,5 +1,5 @@
 // src/toMusicXml.ts
-import { XMLBuilder, create } from 'xmlbuilder2';
+import { create } from 'xmlbuilder2';
 import * as Tonal from 'tonal';
 
 /**
