@@ -387,6 +387,39 @@ function weightedPick<T>(items: T[], weights: number[]): T {
   return items[items.length - 1]; // fallback
 }
 
+/**
+ * Generates a musically natural rhythmic pattern that exactly fills one bar
+ * of the provided time signature. The rhythm is constructed by selecting
+ * pre-defined "cells" (idiomatic micro‑patterns) per beat group, rather than
+ * choosing isolated note values, to improve accent clarity and stylistic feel.
+ *
+ * Features / Rules:
+ *  - Supports simple, compound, and selected additive meters (e.g. 5/4, 7/8).
+ *  - Complexity (1–10) maps to an internal tier (1–5) affecting subdivision,
+ *    syncopation, and rest usage.
+ *  - Strong beats are biased toward note onsets; rests on primary downbeats
+ *    are strongly discouraged at low complexity levels.
+ *  - Rests are encoded as negative denominators (e.g. -8 = eighth rest).
+ *  - Ensures the sum of fractional durations equals the meter (validated).
+ *
+ * Representation:
+ *  Each element in the returned array is a denominator (power‑of‑two) or its
+ *  negative for rests. Example for 4/4: [4, 8, 8, -4] => quarter, two eighths,
+ *  quarter rest.
+ *
+ * @param meter Time signature string (e.g. "4/4", "6/8", "7/8"). Must pass
+ *              validateMeter().
+ * @param complexity Integer 1–10 controlling density & syncopation.
+ * @returns RhythmicEvent[] array of (possibly signed) denominators summing to one measure.
+ * @throws InvalidInputError if complexity or meter is invalid.
+ * @throws GenerationError if (rare) internal mismatch occurs.
+ *
+ * @example
+ *  generateRhythm('4/4', 3); // -> [4, 8, 8, 4]
+ *  generateRhythm('6/8', 5); // -> [8,16,16,8,16,16] (one possible result)
+ *  // Negative values indicate rests:
+ *  generateRhythm('3/4', 4); // -> [4, -8, 8, 4]
+ */
 export function generateRhythm(
   meter: string,
   complexity: number,
