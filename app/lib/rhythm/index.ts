@@ -69,6 +69,7 @@ export function generateNoteValueSequence(
   const validDen = [1, 2, 4, 8, 16, 32];
   if (!num || !validDen.includes(den))
     throw new InvalidInputError(`Unsupported meter '${meter}'.`);
+
   const noteValues: NoteValuesMap = {
     1: new Fraction(1),
     2: new Fraction(1, 2),
@@ -77,6 +78,7 @@ export function generateNoteValueSequence(
     16: new Fraction(1, 16),
     32: new Fraction(1, 32),
   };
+  // It’s the goal sum the generated note values must add up to
   const target = new Fraction(num, den);
   const weights: Record<number, number> = {
     1: 0,
@@ -86,14 +88,20 @@ export function generateNoteValueSequence(
     16: 0,
     32: 0,
   };
-  if (complexity <= 2) {
+  if (complexity === 1) {
+    weights[2] = 8;
     weights[4] = 10;
+  } else if (complexity === 2) {
+    weights[2] = 3;
+    weights[4] = 10;
+  } else if (complexity === 3) {
     weights[2] = 5;
+    weights[4] = 10;
     weights[8] = 1;
-  } else if (complexity <= 4) {
+  } else if (complexity === 4) {
+    weights[2] = 5;
     weights[4] = 10;
     weights[8] = 8;
-    weights[2] = 3;
     weights[16] = 1;
   } else if (complexity <= 6) {
     weights[4] = 8;
