@@ -272,8 +272,34 @@ const RHYTHMIC_CELLS: Record<
   },
 };
 
+/**
+ * Derives the primary beat-group segmentation for a given time signature and
+ * classifies the beat type (simple vs compound) used later for rhythmic cell selection.
+ *
+ * Grouping rules:
+ *  - Compound meters with an 8 denominator and numerator 6,9,12 are grouped into equal
+ *    dotted-quarter units (arrays of 3 underlying eighth units).
+ *  - Asymmetrical / additive meters (5/4, 7/4, 5/8, 7/8) are mapped to common conducting
+ *    patterns (e.g. 5/4 -> 3+2, 7/8 -> 2+2+3). These are treated as simple beat groups.
+ *  - All other supported simple meters produce one group per notated beat (quarter in x/4,
+ *    half in 2/2) by setting groupSize = 1 (each base unit = 1/denominator fraction).
+ *
+ * The returned `groups` array lists how many base units belong to each higher-level beat group.
+ * For example:
+ *  - 4/4 -> baseUnit = 1/4, groups = [1,1,1,1]
+ *  - 6/8 -> baseUnit = 1/8, groups = [3,3]
+ *  - 7/8 -> baseUnit = 1/8, groups = [2,2,3]
+ *  - 5/4 -> baseUnit = 1/4, groups = [3,2]
+ *
+ * @param numerator The top number of the time signature.
+ * @param denominator The bottom number of the time signature.
+ * @returns An object containing:
+ *  - groups: number[] of group lengths in base units
+ *  - baseUnit: Fraction representing the underlying smallest written unit (1/denominator)
+ *  - beatType: 'simple' | 'compound' classification used for rhythmic cell selection.
+ */
 function getGroupingPlan(numerator: number, denominator: number): GroupingPlan {
-  const baseUnit = new Fraction(1, denominator);
+  const baseUnit = new Fraction(1, denominator); // Base unit is 1/denominator (e.g. quarter note in 4/4, eighth in 6/8)
   const beatType =
     [6, 9, 12].includes(numerator) && denominator === 8 ? 'compound' : 'simple';
 
