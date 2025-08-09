@@ -172,7 +172,9 @@ function buildPartMeasures(
         noteBuffer.shift();
         continue;
       }
-      const rhythmInfo = rhythmMap.get(noteObj.rhythm);
+      // Support negative rhythm values to denote rests; map to absolute for duration/type
+      const rhythmDen = Math.abs(noteObj.rhythm);
+      const rhythmInfo = rhythmMap.get(rhythmDen);
       if (!rhythmInfo) {
         console.warn(
           `Skipping note with unrecognized rhythm: ${noteObj.rhythm}`,
@@ -191,7 +193,9 @@ function buildPartMeasures(
       noteBuffer.shift();
 
       const noteElement = measureElement.ele('note');
-      const isRest = noteObj.note?.toLowerCase() === 'rest';
+      const isRest =
+        (typeof noteObj.rhythm === 'number' && noteObj.rhythm < 0) ||
+        noteObj.note?.toLowerCase() === 'rest';
 
       if (isRest) {
         noteElement.ele('rest').up();
