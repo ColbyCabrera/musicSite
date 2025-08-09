@@ -598,9 +598,10 @@ export function generateRhythm(
       continue;
     }
 
-    // Weight selection: give strong preference to non-rest-starting cells on downbeats
+    // Weight selection: prefer simpler subdivision at mid complexities and avoid rests on strong beats
     const weights = validCells.map((cell) => {
       let weight = 1.0;
+
       // On beat 1 (i=0) and other strong beats (e.g. beat 3 in 4/4), heavily prefer cells that start with a note.
       const isStrongBeat = i === 0 || (num === 4 && i === 2);
       if (isStrongBeat && cell[0][0] < 0) {
@@ -610,6 +611,53 @@ export function generateRhythm(
       if (complexity <= 4 && cell[0][0] < 0) {
         weight *= 0.5;
       }
+
+      // Subdivision-aware weighting to curb excessive 16ths at moderate complexity
+      const flat = cell.flat();
+      let count16 = 0;
+      let count8 = 0;
+      let hasRest = false;
+
+      // Tally the number of 16th and 8th notes and check for rests.
+      // A negative value indicates a rest.
+      for (const v of flat) {
+        const d = Math.abs(v);
+        if (v < 0) hasRest = true;
+        if (d === 16) count16++;
+        else if (d === 8) count8++;
+      }
+
+      // Prefer simpler patterns around complexity ~5; scale penalty/boost by complexity
+      if (beatType === 'simple') {
+        if (complexity <= 5) {
+          // Penalize each 16th moderately
+          weight *= Math.pow(0.7, count16);
+          // Boost clean eighths [8,8]
+          if (count8 === 2 && count16 === 0) weight *= 1.6;
+          // Heavy 16ths (four 16ths) extra penalty
+          if (count16 >= 4) weight *= 0.7;
+        } else if (complexity <= 7) {
+          // Mild preference for fewer 16ths
+          weight *= Math.pow(0.85, count16);
+        } else {
+          // Higher complexity: slight encouragement of more subdivision
+          weight *= 1 + Math.min(0.3, count16 * 0.05);
+        }
+      } else if (beatType === 'compound') {
+        // In compound meters, keep some 16ths but still temper at mid complexity
+        if (complexity <= 5) {
+          weight *= Math.pow(0.8, count16);
+          if (count8 === 3 && count16 === 0) weight *= 1.4; // [8,8,8]
+        } else if (complexity <= 7) {
+          weight *= Math.pow(0.9, count16);
+        } else {
+          weight *= 1 + Math.min(0.25, count16 * 0.04);
+        }
+      }
+
+      // Slightly de-emphasize rest-heavy cells at moderate complexity overall
+      if (complexity <= 5 && hasRest) weight *= 0.7;
+
       return weight;
     });
 
