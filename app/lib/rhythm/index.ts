@@ -212,8 +212,8 @@ const RHYTHMIC_CELLS: Record<
 > = {
   simple: {
     // For beats like quarter notes (in 4/4, 3/4, etc.)
-    1: [[[4]], [[8, 8]], [[8, 16, 16]], [[16, 16, 8]], [[16, 8, 16]]], // Standard
-    2: [
+    5: [[[4]], [[-4]], [[8, 8]], [[16, 16, 16, 16]]], // Standard
+    6: [
       [[4]],
       [[8, 8]],
       [[-8, 8]],
@@ -221,7 +221,7 @@ const RHYTHMIC_CELLS: Record<
       [[16, 16, 8]],
       [[16, 8, 16]],
     ], // + Rests
-    3: [
+    7: [
       [[8, 8]],
       [[-8, 16, 16]],
       [[16, 16, 16, 16]],
@@ -229,7 +229,7 @@ const RHYTHMIC_CELLS: Record<
       [[16, 16, 8]],
       [[16, 8, 16]],
     ], // More subdivision
-    4: [
+    8: [
       [[8, 8]],
       [[-8, 8]],
       [[16, 16, 16, 16]],
@@ -238,7 +238,7 @@ const RHYTHMIC_CELLS: Record<
       [[16, 16, 8]],
       [[16, 8, 16]],
     ], // Syncopation and rests
-    5: [
+    9: [
       [[16, 16, 16, 16]],
       [[8, 16, 16]],
       [[16, 16, 8]],
@@ -570,7 +570,7 @@ export function generateRhythm(
     return events; // (No rests for low complexities per requirement.)
   }
 
-  const complexityLevel = Math.ceil(complexity / 2);
+  const complexityLevel = Math.ceil(complexity);
   const cellSet = RHYTHMIC_CELLS[beatType][complexityLevel];
 
   for (let i = 0; i < groups.length; i++) {
