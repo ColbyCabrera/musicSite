@@ -7,7 +7,7 @@ import {
   putInRange as utilPutInRange,
   InvalidRangeError,
 } from './generationUtils';
-import { generateNoteValueSequence } from './rhythm';
+import { generateRhythm } from './rhythm';
 
 // AI generation removed: no external API usage retained.
 
