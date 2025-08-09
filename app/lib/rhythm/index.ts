@@ -503,7 +503,7 @@ export function generateRhythm(
       // Collect viable denominators
       let viable = allowed.filter((d) => {
         if (!fitsWholeNote(d, position, remaining)) return false;
-        if (complexity === 3 && !isOnBeatBoundary) {
+        if (complexity <= 4 && !isOnBeatBoundary) {
           // Event length in base units (1/den units)
           const eventUnits = new Fraction(den, d);
           // Off-beat events must end before or exactly at next boundary
