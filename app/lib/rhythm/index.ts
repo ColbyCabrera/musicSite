@@ -433,6 +433,138 @@ export function generateRhythm(
   const { groups, baseUnit, beatType } = getGroupingPlan(num, den);
   const result: RhythmicEvent[] = [];
 
+  // -----------------------------------------------------------------------
+  // Low complexity (1-3) simple-meter strategy:
+  // User requirement: complexity 1 => only whole, half, quarter (favor longer);
+  // complexity 2 => same set but favor quarters; complexity 3 => introduce a
+  // small amount of eighth notes. We generate at measure level here instead of
+  // beat-group cells to allow half & whole notes that span multiple beats.
+  // Additional for complexity 3: disallow off-beat durations that cross the
+  // next beat boundary (prevents syncopation that would require ties).
+  // -----------------------------------------------------------------------
+  if (beatType === 'simple' && complexity <= 3) {
+    const target = new Fraction(num, den); // total measure length
+    const events: RhythmicEvent[] = [];
+    let position = new Fraction(0); // accumulated duration
+
+    // Determine allowed denominators by complexity
+    const allowed: number[] = (() => {
+      if (complexity === 1) return [1, 2, 4];
+      if (complexity === 2) return [1, 2, 4];
+      return [1, 2, 4, 8]; // complexity === 3 introduces limited 8ths
+    })();
+
+    // Weight mapping per complexity
+    const baseWeights: Record<number, number> = {};
+    for (const d of allowed) baseWeights[d] = 1; // init
+    if (complexity === 1) {
+      baseWeights[1] = 5; // whole (if fits & at start)
+      baseWeights[2] = 3; // half
+      baseWeights[4] = 1; // quarter
+    } else if (complexity === 2) {
+      baseWeights[1] = 1; // rare whole
+      baseWeights[2] = 2; // some halves
+      baseWeights[4] = 6; // mostly quarters
+    } else {
+      // complexity 3
+      baseWeights[1] = 1;
+      baseWeights[2] = 5;
+      baseWeights[4] = 150;
+      baseWeights[8] = 90;
+    }
+
+    const fitsWholeNote = (
+      d: number,
+      pos: Fraction,
+      remaining: Fraction,
+    ): boolean => {
+      const dur = new Fraction(1, d);
+      // Whole note (d=1) only allowed at start and only if equals full measure
+      if (d === 1) return pos.equals(0) && dur.equals(remaining);
+      // Otherwise ensure it fits entirely inside remaining
+      return dur.compare(remaining) <= 0;
+    };
+
+    while (position.compare(target) < 0) {
+      const remaining = target.sub(position);
+      // Compute current position relative to beat boundaries (baseUnit = 1/den)
+      const posUnits = position.mul(den); // measured in base units of 1/den
+      const isOnBeatBoundary = Number(posUnits.d) === 1; // integer number of base units
+      // Distance (in base units) to the next beat boundary
+      const nextBoundaryUnits = isOnBeatBoundary
+        ? new Fraction(1)
+        : new Fraction(Math.ceil(posUnits.valueOf())).sub(posUnits);
+
+      // Collect viable denominators
+      let viable = allowed.filter((d) => {
+        if (!fitsWholeNote(d, position, remaining)) return false;
+        if (complexity === 3 && !isOnBeatBoundary) {
+          // Event length in base units (1/den units)
+          const eventUnits = new Fraction(den, d);
+          // Off-beat events must end before or exactly at next boundary
+          if (eventUnits.compare(nextBoundaryUnits) > 0) return false;
+        }
+        return true;
+      });
+      if (!viable.length) {
+        // Fallback: force smallest allowed that fits (shouldn't usually happen)
+        const smallest = allowed[allowed.length - 1];
+        viable = [smallest];
+      }
+      // Adjust weights contextually: Avoid repeating many wholes/halves; ensure finish
+      const weighted = viable.map((d) => {
+        let w = baseWeights[d] ?? 1;
+        const dur = new Fraction(1, d);
+        // If remaining equals dur force it with huge weight
+        if (dur.equals(remaining)) w *= 50;
+        // Discourage using half/whole right before a small leftover (to avoid awkward final tiny note) by anticipating remainder
+        const remainderAfter = remaining.sub(dur);
+        if (
+          remainderAfter.compare(0) > 0 &&
+          remainderAfter.valueOf() < 1 / 8 &&
+          d <= 2
+        ) {
+          w *= 0.2;
+        }
+        // Reduce repetition of same denominator more than 3 times in a row
+        const len = events.length;
+        if (
+          len >= 3 &&
+          events[len - 1] === d &&
+          events[len - 2] === d &&
+          events[len - 3] === d
+        ) {
+          w *= 0.15;
+        }
+        return { d, w };
+      });
+      const total = weighted.reduce((s, x) => s + x.w, 0);
+      let roll = Math.random() * total;
+      let chosen = weighted[0].d;
+      for (const entry of weighted) {
+        roll -= entry.w;
+        if (roll <= 0) {
+          chosen = entry.d;
+          break;
+        }
+      }
+      events.push(chosen);
+      position = position.add(new Fraction(1, chosen));
+    }
+
+    // Final safety check
+    const sum = events.reduce(
+      (acc, d) => acc.add(new Fraction(1, d)),
+      new Fraction(0),
+    );
+    if (!sum.equals(target)) {
+      throw new GenerationError(
+        `Low-complexity rhythm mismatch: expected ${target.toFraction(true)} got ${sum.toFraction(true)}`,
+      );
+    }
+    return events; // (No rests for low complexities per requirement.)
+  }
+
   const complexityLevel = Math.ceil(complexity / 2);
   const cellSet = RHYTHMIC_CELLS[beatType][complexityLevel];
 
