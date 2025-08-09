@@ -442,7 +442,7 @@ export function generateRhythm(
   // Additional for complexity 3: disallow off-beat durations that cross the
   // next beat boundary (prevents syncopation that would require ties).
   // -----------------------------------------------------------------------
-  if (beatType === 'simple' && complexity <= 3) {
+  if (beatType === 'simple' && complexity <= 4) {
     const target = new Fraction(num, den); // total measure length
     const events: RhythmicEvent[] = [];
     let position = new Fraction(0); // accumulated duration
@@ -451,26 +451,31 @@ export function generateRhythm(
     const allowed: number[] = (() => {
       if (complexity === 1) return [1, 2, 4];
       if (complexity === 2) return [1, 2, 4];
-      return [1, 2, 4, 8]; // complexity === 3 introduces limited 8ths
+      if (complexity === 3) return [1, 2, 4, 8];
+      return [1, 2, 4, 8]; // complexity === 4 introduces more 8ths
     })();
 
     // Weight mapping per complexity
     const baseWeights: Record<number, number> = {};
     for (const d of allowed) baseWeights[d] = 1; // init
     if (complexity === 1) {
-      baseWeights[1] = 5; // whole (if fits & at start)
-      baseWeights[2] = 3; // half
-      baseWeights[4] = 1; // quarter
+      baseWeights[1] = 1; // whole (if fits & at start)
+      baseWeights[2] = 6; // half
+      baseWeights[4] = 2; // quarter
     } else if (complexity === 2) {
       baseWeights[1] = 1; // rare whole
-      baseWeights[2] = 2; // some halves
-      baseWeights[4] = 6; // mostly quarters
-    } else {
-      // complexity 3
+      baseWeights[2] = 20; // some halves
+      baseWeights[4] = 100; // mostly quarters
+    } else if (complexity === 3) {
       baseWeights[1] = 1;
       baseWeights[2] = 5;
       baseWeights[4] = 150;
-      baseWeights[8] = 90;
+      baseWeights[8] = 40;
+    } else if (complexity === 4) {
+      baseWeights[1] = 1;
+      baseWeights[2] = 3;
+      baseWeights[4] = 150;
+      baseWeights[8] = 100;
     }
 
     const fitsWholeNote = (
