@@ -557,9 +557,20 @@ export function generateRhythm(
         return true;
       });
       if (!viable.length) {
-        // Fallback: force smallest allowed that fits (shouldn't usually happen)
-        const smallest = allowed[allowed.length - 1];
-        viable = [smallest];
+        // Robust fallback: iterate allowed from shortest duration to longest and pick one that fits the remaining duration.
+        // We relax the off-beat boundary rule here to guarantee progress and avoid deadlocks.
+        const sorted = [...allowed].sort((a, b) => b - a); // e.g., [8,4,2,1]
+        const candidate = sorted.find(
+          (d) => new Fraction(1, d).compare(remaining) <= 0,
+        );
+        if (candidate !== undefined) {
+          viable = [candidate];
+        } else {
+          // Nothing fits the remaining duration; abort generation safely.
+          throw new GenerationError(
+            `Unfillable remainder ${remaining.toFraction(true)} at position ${position.toFraction(true)} in meter ${meter}. Allowed: [${allowed.join(', ')}]`,
+          );
+        }
       }
       // Adjust weights contextually: Avoid repeating many wholes/halves; ensure finish
       const weighted = viable.map((d) => {
