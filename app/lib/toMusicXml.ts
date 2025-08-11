@@ -251,9 +251,8 @@ function buildPartMeasures(
       }
 
       noteElement.ele('duration').txt(`${rhythmInfo.duration}`).up();
-      if (!isRest && rhythmInfo.type) {
-        noteElement.ele('type').txt(rhythmInfo.type).up();
-      }
+      // Emit <type> for both notes and rests based on absolute rhythm value
+      noteElement.ele('type').txt(rhythmInfo.type).up();
       noteElement.ele('voice').txt('1').up();
       noteElement.ele('staff').txt('1').up();
       noteElement.up();
