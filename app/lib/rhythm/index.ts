@@ -378,7 +378,33 @@ function validateMeter(meter: string): { num: number; den: number } {
 
 // Pick one element by weight
 function weightedPick<T>(items: T[], weights: number[]): T {
+  // Validate inputs
+  if (!Array.isArray(items) || !Array.isArray(weights)) {
+    throw new TypeError('weightedPick expects arrays for items and weights');
+  }
+  if (items.length === 0 || weights.length === 0) {
+    throw new RangeError('weightedPick requires non-empty items and weights');
+  }
+  if (items.length !== weights.length) {
+    throw new RangeError(
+      `weightedPick items/weights length mismatch: ${items.length} vs ${weights.length}`,
+    );
+  }
+  for (let i = 0; i < weights.length; i++) {
+    const w = weights[i];
+    if (!Number.isFinite(w)) {
+      throw new TypeError(
+        `weightedPick weight at index ${i} is not a finite number`,
+      );
+    }
+    if (w < 0) {
+      throw new RangeError(`weightedPick weight at index ${i} is negative`);
+    }
+  }
   const total = weights.reduce((s, w) => s + w, 0);
+  if (total <= 0) {
+    throw new RangeError('weightedPick requires at least one positive weight');
+  }
   let roll = Math.random() * total;
   for (let i = 0; i < items.length; i++) {
     roll -= weights[i];
