@@ -192,6 +192,17 @@ export function factorsToDurations(
 const ALLOWED_DENOMS = [1, 2, 4, 8, 16, 32] as const;
 type AllowedDenom = (typeof ALLOWED_DENOMS)[number];
 
+// Exported for tests and reuse: allowed numerators by denominator.
+// Denominators without supported numerators are mapped to an empty array (invalid in current engine).
+export const ALLOWED_NUMS_BY_DENOM: Record<AllowedDenom, number[]> = {
+  1: [],
+  2: [2],
+  4: [2, 3, 4, 5, 7],
+  8: [3, 5, 6, 7, 9, 12],
+  16: [],
+  32: [],
+};
+
 // Represents a musical event; negative number for rest denominator, positive for note.
 type RhythmicEvent = number;
 
@@ -367,10 +378,8 @@ function validateMeter(meter: string): { num: number; den: number } {
   if (!ALLOWED_DENOMS.includes(den as AllowedDenom)) {
     throw new InvalidInputError(`Unsupported denominator in '${meter}'.`);
   }
-  const allowedSimple = den === 4 && [2, 3, 4, 5, 7].includes(num);
-  const allowedHalf = den === 2 && [2].includes(num);
-  const allowedEighth = den === 8 && [3, 5, 6, 7, 9, 12].includes(num);
-  if (!(allowedSimple || allowedHalf || allowedEighth)) {
+  const allowedNums = ALLOWED_NUMS_BY_DENOM[den as AllowedDenom] ?? [];
+  if (!allowedNums.includes(num)) {
     throw new InvalidInputError(`Unsupported or uncommon meter '${meter}'.`);
   }
   return { num, den };
