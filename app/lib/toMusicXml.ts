@@ -11,8 +11,15 @@ interface NoteObject {
   note?: string;
   /**
    * A numerical representation of the note's rhythm/duration.
-   * For example, 1 for whole, 2 for half, 4 for quarter, 8 for eighth, 16 for sixteenth.
-   * Optional, can be null.
+   * The absolute value determines the note length:
+   *   1 = whole note, 2 = half note, 4 = quarter note, 8 = eighth note, 16 = sixteenth note.
+   * A negative value denotes a rest of the corresponding duration (e.g., -4 = quarter rest).
+   * Only the sign indicates rest vs note; the magnitude alone maps to the duration/type.
+   * Optional; undefined or null will skip the note/rest.
+   *
+   * @example
+   *   rhythm: 8   // eighth note
+   *   rhythm: -8  // eighth rest
    */
   rhythm?: number | null;
 }
