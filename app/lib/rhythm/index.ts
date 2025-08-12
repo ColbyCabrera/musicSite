@@ -220,7 +220,7 @@ interface GroupingPlan {
 
 /**
  * Generates a low-complexity rhythm for simple meters (complexity 1-4) at the measure level.
- * Extracted from generateRhythm for readability & testability. Logic preserved verbatim.
+ * Used in generateRhythm
  * No rests are produced in this path. Throws GenerationError on unfillable remainders
  * or post-sum mismatch.
  */
