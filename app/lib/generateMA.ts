@@ -103,8 +103,10 @@ function generateMelody(
     try {
       rhythm = generateRhythm(meter, 3); // Using moderate complexity for melody rhythm
       if (process.env.NODE_ENV !== 'production') {
-        console.log(
-          `Generated rhythm for "${chordSymbol}": ${JSON.stringify(rhythm)}`,
+        console.debug(
+          '[generateMA] Generated rhythm for chord',
+          chordSymbol,
+          rhythm,
         );
       }
     } catch (e) {
