@@ -188,7 +188,12 @@ export function factorsToDurations(
 //  - Support a wide range of simple, compound, and asymmetrical meters.
 // References (principles distilled from):
 //  https://musictheory.pugetsound.edu/mt21c/CommonRhythmicNotationErrors.html
-
+// Denominator whitelist for meter parsing. Values 2,4,8 currently have supported
+// numerator sets (see ALLOWED_NUMS_BY_DENOM). Entries 1,16,32 are intentional
+// placeholders for future extension (e.g., whole-note, 1/16, or 1/32 based
+// meters) and presently map to an empty numerator array, causing any meter
+// using them to be rejected as "unsupported or uncommon". Adjust ALLOWED_NUMS_BY_DENOM
+// to activate them in the future.
 const ALLOWED_DENOMS = [1, 2, 4, 8, 16, 32] as const;
 type AllowedDenom = (typeof ALLOWED_DENOMS)[number];
 
