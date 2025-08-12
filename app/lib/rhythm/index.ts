@@ -256,6 +256,14 @@ const RHYTHMIC_CELLS: Record<
       [[-8, 16, 16]],
       [[16, 8, 16]],
     ], // Higher complexity
+    10: [
+      // Level 10 currently mirrors level 9; can be extended with more syncopated or rest-heavy patterns later.
+      [[16, 16, 16, 16]],
+      [[8, 16, 16]],
+      [[16, 16, 8]],
+      [[-8, 16, 16]],
+      [[16, 8, 16]],
+    ],
   },
   compound: {
     // For beats like dotted quarters (in 6/8, 9/8, etc.)
