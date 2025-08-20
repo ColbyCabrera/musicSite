@@ -2,18 +2,14 @@ import { generateLowComplexityRhythm } from '../rhythm';
 import Fraction from 'fraction.js';
 
 describe('generateLowComplexityRhythm (low complexity simple meters)', () => {
-  // Helper to sum denominators into a Fraction
-  const sumDur = (nums: number[], num: number, den: number) => {
-    return nums.reduce(
-      (acc, d) => acc.add(new Fraction(1, d)),
-      new Fraction(0),
-    );
-  };
+  // Helper to sum denominators into a Fraction (duration in whole notes)
+  const sumDur = (dens: number[]) =>
+    dens.reduce((acc, d) => acc.add(new Fraction(1, d)), new Fraction(0));
 
   it('produces only whole/half/quarter at complexity 1 in 4/4', () => {
     const r = generateLowComplexityRhythm(4, 4, 1, '4/4');
     expect(r.every((d) => [1, 2, 4].includes(d))).toBe(true);
-    expect(sumDur(r, 4, 4).equals(new Fraction(4, 4))).toBe(true);
+    expect(sumDur(r).equals(new Fraction(4, 4))).toBe(true);
   });
 
   it('introduces eighths at complexity 3 in 4/4', () => {
@@ -50,7 +46,7 @@ describe('generateLowComplexityRhythm (low complexity simple meters)', () => {
 
   it('fills full measure for 3/4', () => {
     const r = generateLowComplexityRhythm(3, 4, 2, '3/4');
-    expect(sumDur(r, 3, 4).equals(new Fraction(3, 4))).toBe(true);
+    expect(sumDur(r).equals(new Fraction(3, 4))).toBe(true);
   });
 
   it('throws on impossible remainder by constructing a scenario with tiny measure (edge)', () => {
