@@ -101,6 +101,14 @@ const rhythmMap = new Map<number, RhythmInfo>([
   [32, { type: '32nd', duration: RHYTHM_MAP_DIVISIONS / 8 }],
 ]);
 
+// Mapping of alteration values to MusicXML accidental text.
+const ALTER_TO_ACCIDENTAL: Readonly<Record<number, string>> = {
+  1: 'sharp',
+  [-1]: 'flat',
+  2: 'double-sharp',
+  [-2]: 'flat-flat',
+};
+
 interface ScoreData {
   /** Array of NoteObject representing the melody line. */
   melody: NoteObject[];
@@ -221,24 +229,9 @@ function buildPartMeasures(
           pitch.up();
           // Accidental display logic
           if (pitchInfo.alter !== undefined && pitchInfo.alter !== 0) {
-            let accidentalText = '';
-            switch (pitchInfo.alter) {
-              case 1:
-                accidentalText = 'sharp';
-                break;
-              case -1:
-                accidentalText = 'flat';
-                break;
-              case 2:
-                accidentalText = 'double-sharp';
-                break;
-              case -2:
-                accidentalText = 'flat-flat';
-                break;
-            }
-            if (accidentalText) {
+            const accidentalText = ALTER_TO_ACCIDENTAL[pitchInfo.alter];
+            if (accidentalText)
               noteElement.ele('accidental').txt(accidentalText).up();
-            }
           }
         } else {
           noteElement.ele('rest').up();
