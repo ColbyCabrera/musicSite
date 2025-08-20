@@ -49,9 +49,8 @@ describe('generateLowComplexityRhythm (low complexity simple meters)', () => {
     expect(sumDur(r).equals(new Fraction(3, 4))).toBe(true);
   });
 
-  it('throws on impossible remainder by constructing a scenario with tiny measure (edge)', () => {
-    // Use a spy to force an impossible path? Hard to simulate since logic guarantees fill.
-    // Instead, ensure normal call does NOT throw.
+  it('does not throw for tiny measure edge case (expected always fillable)', () => {
+    // The generation logic ensures full measure fill; this guards against accidental throws.
     expect(() => generateLowComplexityRhythm(2, 4, 2, '2/4')).not.toThrow();
   });
 });
