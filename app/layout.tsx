@@ -1,7 +1,8 @@
 import '@/app/ui/global.css';
-import { albert_sans } from '@/app/ui/fonts';
+import { fontVariables } from '@/app/ui/fonts';
 import { Metadata } from 'next';
 import { Toaster } from './ui/shadcn/components/ui/toaster';
+import { ThemeProvider } from './ui/theme/ThemeProvider';
 
 export const metadata: Metadata = {
   title: {
@@ -39,9 +40,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${albert_sans.className} antialiased`}>
-        {children}
-        <Toaster />
+      <body className={`${fontVariables} antialiased font-sans`}>
+        <ThemeProvider>
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );
