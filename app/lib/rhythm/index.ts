@@ -61,14 +61,8 @@ export function generateNoteValueSequence(
       `Complexity must be integer 1-10. Got ${complexity}`,
     );
   }
-  const parts = meter.split('/');
-  if (parts.length !== 2)
-    throw new InvalidInputError(`Invalid meter '${meter}'.`);
-  const num = parseInt(parts[0], 10);
-  const den = parseInt(parts[1], 10);
-  const validDen = [1, 2, 4, 8, 16, 32];
-  if (!num || !validDen.includes(den))
-    throw new InvalidInputError(`Unsupported meter '${meter}'.`);
+
+  const { num, den } = validateMeter(meter);
 
   const noteValues: NoteValuesMap = {
     1: new Fraction(1),
